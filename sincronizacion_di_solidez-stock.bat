@@ -10,6 +10,10 @@ set "BI_DIR=D:\Proyectos\4_BI_Ecom"
 set "VISTAS_DIR=D:\Proyectos\4_BI_Ecom\Vistas_RMH"
 set "LOGDIR=D:\Proyectos\4_BI_Ecom\Logs"
 
+:: Interprete: venv del repo (fallback al python del sistema)
+set "PY_EXE=D:\Proyectos\4_BI_Ecom\venv\Scripts\python.exe"
+if exist "%PY_EXE%" ( set "PY=%PY_EXE%" ) else ( set "PY=python" )
+
 :: ================================
 :: Nombre del día de la semana (ej: lun, mar, mie, jue, vie, sab, dom)
 :: ================================
@@ -28,7 +32,7 @@ echo Inicio: %DATE% %TIME% >> "%LOGFILE%"
 :: ================================
 echo  Ejecutando stock_solidez-rmh.py... >> "%LOGFILE%"
 cd /d "%BI_DIR%"
-python stock_solidez-rmh.py >> "%LOGFILE%" 2>&1
+"%PY%" stock_solidez-rmh.py >> "%LOGFILE%" 2>&1
 if errorlevel 1 (
     echo Error ejecutando stock_solidez-rmh.py. Abortando... >> "%LOGFILE%"
     echo Fin con error: %DATE% %TIME% >> "%LOGFILE%"
@@ -40,7 +44,7 @@ if errorlevel 1 (
 :: ================================
 echo  SQL actualizado. Ejecutando DI_Solidez_Stock-rmh.py... >> "%LOGFILE%"
 cd /d "%VISTAS_DIR%"
-python DI_Solidez_Stock-rmh.py >> "%LOGFILE%" 2>&1
+"%PY%" DI_Solidez_Stock-rmh.py >> "%LOGFILE%" 2>&1
 if errorlevel 1 (
     echo Error ejecutando DI_Solidez_Stock-rmh.py >> "%LOGFILE%"
     echo Fin con error: %DATE% %TIME% >> "%LOGFILE%"

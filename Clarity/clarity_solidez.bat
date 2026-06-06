@@ -6,7 +6,7 @@ set "BASE_DIR=D:\Proyectos\4_BI_Ecom\Clarity"
 set "LOGDIR=D:\Proyectos\4_BI_Ecom\Logs"
 set "SCRIPT=%BASE_DIR%\clarity_extractor_to_sql.py"
 
-set "PY_EXE=%BASE_DIR%\venv\Scripts\python.exe"
+set "PY_EXE=D:\Proyectos\4_BI_Ecom\venv\Scripts\python.exe"
 if exist "%PY_EXE%" (
   set "PY=%PY_EXE%"
 ) else (

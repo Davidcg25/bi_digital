@@ -1,0 +1,22 @@
+# BI Ecom (Digital Impact) — entorno consolidado para todo el stack.
+# Crear venv:  py -3.11 -m venv venv
+#              venv\Scripts\python -m pip install -r requirements.txt
+# Los batches usan venv\Scripts\python.exe (ver instalar_tareas_bi.ps1).
+
+# Datos / SQL
+pandas>=2.0.0
+SQLAlchemy>=2.0.0
+pyodbc>=5.0.0
+openpyxl>=3.1.0
+python-dotenv>=1.0.0
+
+# HTTP (PageSpeed, APIs)
+httpx>=0.27.0
+requests>=2.31.0
+tqdm>=4.66.0
+
+# Google (GA4 + Sheets)
+google-analytics-data>=0.18.0
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+gspread>=6.0.0

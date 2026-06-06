@@ -16,7 +16,7 @@ REM Deja PROPERTY_IDS_TO_RUN vacio para correr todas las properties definidas en
 set "PROPERTY_IDS_TO_RUN="
 
 REM ==== Python: usa venv si existe; si no, python del sistema ====
-set "PY_EXE=%GA4_DIR%\venv\Scripts\python.exe"
+set "PY_EXE=D:\Proyectos\4_BI_Ecom\venv\Scripts\python.exe"
 if exist "%PY_EXE%" (
   set "PY=%PY_EXE%"
 ) else (
