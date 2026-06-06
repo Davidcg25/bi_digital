@@ -3,8 +3,8 @@ setlocal ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION
 chcp 65001 >NUL
 
 REM ==== RUTAS ====
-set "BASE_API=D:\Programs\1. Apps\7. Digital Impact\4. BI"
-set "BASE_PUSH=D:\Programs\1. Apps\7. Digital Impact\4. BI\Vistas_RMH"
+set "BASE_API=D:\Proyectos\4_BI_Ecom"
+set "BASE_PUSH=D:\Proyectos\4_BI_Ecom\Vistas_RMH"
 set "LOGDIR=%BASE_API%\logs"
 
 REM ==== VENV opcional ====

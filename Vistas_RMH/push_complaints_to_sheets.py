@@ -7,7 +7,7 @@ import datetime
 
 # === CONFIGURACIONES ===
 tabla_sql = "SZ_Complaint_Books"
-ruta_credenciales = r"D:\Programs\1. Apps\7. Digital Impact\4. BI\Vistas_RMH\di-auth-gsheets.json"
+ruta_credenciales = r"D:\Proyectos\4_BI_Ecom\Vistas_RMH\di-auth-gsheets.json"
 nombre_google_sheet = "Solidez | Ecommerce - Libros de reclamos"
 nombre_hoja = "Reclamos"
 

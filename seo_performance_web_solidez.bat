@@ -2,7 +2,7 @@
 setlocal ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION
 chcp 65001 >NUL
 
-set "BASE_DIR=D:\Programs\1. Apps\7. Digital Impact\4. BI"
+set "BASE_DIR=D:\Proyectos\4_BI_Ecom"
 set "LOGDIR=%BASE_DIR%\Logs"
 set "SCRIPT=%BASE_DIR%\seo_performance-web_sql.py"
 

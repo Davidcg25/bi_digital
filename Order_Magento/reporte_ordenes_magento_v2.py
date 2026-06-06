@@ -36,8 +36,8 @@ engine = create_engine(
 )
 
 # Rutas de datos auxiliares
-SALES_RULES_PATH = r"D:\Programs\1. Apps\7. Digital Impact\4. BI\Promociones Magento\sales_rules_export.xlsx"
-LOCALES_PATH = r"D:\Programs\1. Apps\7. Digital Impact\4. BI\tabla_locales.csv"
+SALES_RULES_PATH = r"D:\Proyectos\4_BI_Ecom\Promociones Magento\sales_rules_export.xlsx"
+LOCALES_PATH = r"D:\Proyectos\4_BI_Ecom\tabla_locales.csv"
 
 # Credenciales API de Magento (staging provistas)
 CONSUMER_KEY = 'wab8paongympcuj7y5x4qdxs0bw1hd4z'

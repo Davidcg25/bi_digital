@@ -6,9 +6,9 @@ chcp 65001 > nul
 :: ================================
 :: Configuración de rutas
 :: ================================
-set "BI_DIR=D:\Programs\1. Apps\7. Digital Impact\4. BI"
-set "VISTAS_DIR=D:\Programs\1. Apps\7. Digital Impact\4. BI\Vistas_RMH"
-set "LOGDIR=D:\Programs\1. Apps\7. Digital Impact\4. BI\Logs"
+set "BI_DIR=D:\Proyectos\4_BI_Ecom"
+set "VISTAS_DIR=D:\Proyectos\4_BI_Ecom\Vistas_RMH"
+set "LOGDIR=D:\Proyectos\4_BI_Ecom\Logs"
 
 :: ================================
 :: Nombre del día de la semana (ej: lun, mar, mie, jue, vie, sab, dom)

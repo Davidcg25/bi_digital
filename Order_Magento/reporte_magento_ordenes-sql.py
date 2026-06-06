@@ -40,8 +40,8 @@ CONSUMER_SECRET = 'erypfmavubmjb520ap1oe4zwbsdl310x'
 ACCESS_TOKEN = 'o3pmatsrmolplnsvtdm2oc1ey7jwxej6'
 ACCESS_TOKEN_SECRET = '3eftvwbskm5atab6pm8zr6ng51t8kova'
 
-SALES_RULES_PATH = r"D:\Programs\1. Apps\7. Digital Impact\4. BI\Promociones Magento\sales_rules_export.xlsx"
-LOCALES_PATH = r"D:\Programs\1. Apps\7. Digital Impact\4. BI\tabla_locales.csv"
+SALES_RULES_PATH = r"D:\Proyectos\4_BI_Ecom\Promociones Magento\sales_rules_export.xlsx"
+LOCALES_PATH = r"D:\Proyectos\4_BI_Ecom\tabla_locales.csv"
 
 # SQL Server (Trusted Connection)
 server = 'localhost'

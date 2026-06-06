@@ -20,8 +20,8 @@ OUTPUT_FOLDER = "."
 PAGE_SIZE = 100
 BASE_URL = 'https://converse.cl/rest/converse_pe_store_view/V1/'
 # Rutas de reportes a cruzar
-SALES_RULES_PATH = r"D:\Programs\1. Apps\7. Digital Impact\4. BI\Promociones Magento\sales_rules_export.xlsx"
-LOCALES_PATH = r"D:\Programs\1. Apps\7. Digital Impact\4. BI\tabla_locales.csv"
+SALES_RULES_PATH = r"D:\Proyectos\4_BI_Ecom\Promociones Magento\sales_rules_export.xlsx"
+LOCALES_PATH = r"D:\Proyectos\4_BI_Ecom\tabla_locales.csv"
 
 
 # Credenciales API de Magento

@@ -9,5 +9,5 @@ if %DOW% EQU 6 exit /b 0
 REM Espera 5 minutos despues del inicio de sesion para no competir con el arranque.
 timeout /t 300 /nobreak >NUL
 
-call "D:\Programs\1. Apps\7. Digital Impact\4. BI\medios_di_ga4_solidez.bat"
+call "D:\Proyectos\4_BI_Ecom\medios_di_ga4_solidez.bat"
 exit /b %ERRORLEVEL%

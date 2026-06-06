@@ -9,7 +9,7 @@ import datetime
 
 # === CONFIGURACIONES ===
 nombre_vista = "Vista_Ventas_Solidez_Resumen"
-ruta_credenciales = r"D:\Programs\1. Apps\7. Digital Impact\4. BI\Vistas_RMH\di-auth-gsheets.json"
+ruta_credenciales = r"D:\Proyectos\4_BI_Ecom\Vistas_RMH\di-auth-gsheets.json"
 nombre_google_sheet = "Solidez-RMH-Ventas-Medios"
 
 hoja_detalle = "Detalle Diario"

@@ -22,7 +22,7 @@ EXCLUIR_CHILE  = True          # excluye Tienda_Web que terminan en " CL"
 DAYS_BACK      = 28             # 4 semanas atrás
 
 # Google Sheets
-GS_CRED_PATH   = r"D:\Programs\1. Apps\7. Digital Impact\4. BI\Vistas_RMH\di-auth-gsheets.json"
+GS_CRED_PATH   = r"D:\Proyectos\4_BI_Ecom\Vistas_RMH\di-auth-gsheets.json"
 GS_SHEET_NAME  = "Ecom | Venta Magento"
 GS_TAB_NAME    = "Data"
 

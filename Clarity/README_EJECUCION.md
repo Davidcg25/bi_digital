@@ -7,7 +7,7 @@ Extractor local para Microsoft Clarity Live Insights API.
 El script lee las credenciales desde el `.env` raiz del stack BI:
 
 ```text
-D:\Programs\1. Apps\7. Digital Impact\4. BI\.env
+D:\Proyectos\4_BI_Ecom\.env
 ```
 
 Formato usado:

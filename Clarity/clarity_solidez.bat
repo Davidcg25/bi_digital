@@ -2,8 +2,8 @@
 setlocal ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION
 chcp 65001 >NUL
 
-set "BASE_DIR=D:\Programs\1. Apps\7. Digital Impact\4. BI\Clarity"
-set "LOGDIR=D:\Programs\1. Apps\7. Digital Impact\4. BI\Logs"
+set "BASE_DIR=D:\Proyectos\4_BI_Ecom\Clarity"
+set "LOGDIR=D:\Proyectos\4_BI_Ecom\Logs"
 set "SCRIPT=%BASE_DIR%\clarity_extractor_to_sql.py"
 
 set "PY_EXE=%BASE_DIR%\venv\Scripts\python.exe"

@@ -24,7 +24,7 @@ from urllib.parse import quote_plus
 # =========================
 # CONFIGURACIÓN
 # =========================
-RUTA_CREDENCIALES = r"D:\Programs\1. Apps\7. Digital Impact\4. BI\Vistas_RMH\di-auth-gsheets.json"
+RUTA_CREDENCIALES = r"D:\Proyectos\4_BI_Ecom\Vistas_RMH\di-auth-gsheets.json"
 NOMBRE_GOOGLE_SHEET = "Solidez-RMH-Stock"
 
 # Map: { nombre_pestaña : query_sql }

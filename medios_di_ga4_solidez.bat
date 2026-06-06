@@ -3,7 +3,7 @@ setlocal ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION
 chcp 65001 >NUL
 
 REM ==== RUTAS ====
-set "BASE_DIR=D:\Programs\1. Apps\7. Digital Impact\4. BI"
+set "BASE_DIR=D:\Proyectos\4_BI_Ecom"
 set "GA4_DIR=%BASE_DIR%\GA4"
 set "LOGDIR=%BASE_DIR%\Logs"
 

@@ -5,14 +5,14 @@ Uso recomendado despues de formatear:
   1. Abre PowerShell como tu usuario normal.
   2. Ejecuta:
      Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-     & "D:\Programs\1. Apps\7. Digital Impact\4. BI\instalar_tareas_bi.ps1"
+     & "D:\Proyectos\4_BI_Ecom\instalar_tareas_bi.ps1"
 
 Edita Triggers en $Tasks si necesitas mover la ventana de ejecucion.
 #>
 
 $ErrorActionPreference = "Stop"
 
-$BaseDir = "D:\Programs\1. Apps\7. Digital Impact\4. BI"
+$BaseDir = "D:\Proyectos\4_BI_Ecom"
 $TaskFolder = "\Digital Impact BI\"
 $StartupDir = [Environment]::GetFolderPath("Startup")
 $Ga4StartupBatch = Join-Path $BaseDir "medios_di_ga4_solidez_startup_delayed.bat"

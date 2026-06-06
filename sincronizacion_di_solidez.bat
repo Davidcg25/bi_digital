@@ -2,7 +2,7 @@
 setlocal
 
 :: Ruta a la carpeta de logs
-set LOGDIR="D:\Programs\1. Apps\7. Digital Impact\4. BI\Logs"
+set LOGDIR="D:\Proyectos\4_BI_Ecom\Logs"
 :: Generar nombre dinámico de log con fecha y hora
 set LOGFILE=%LOGDIR%\ventas_solidez_log_%DATE:/=-%_%TIME::=-%.txt
 
@@ -13,7 +13,7 @@ echo 🕒 Inicio: %DATE% %TIME% >> %LOGFILE%
 
 :: Ejecutar primer script
 echo 🔄 Ejecutando ventas_solidez-rmh.py... >> %LOGFILE%
-cd /d "D:\Programs\1. Apps\7. Digital Impact\4. BI"
+cd /d "D:\Proyectos\4_BI_Ecom"
 python ventas_solidez-rmh.py >> %LOGFILE% 2>&1
 
 IF %ERRORLEVEL% NEQ 0 (
@@ -23,7 +23,7 @@ IF %ERRORLEVEL% NEQ 0 (
 
 :: Ejecutar segundo script
 echo ✅ Sincronización SQL completada. Ejecutando DI_Solidez_Ventas_Medios.py... >> %LOGFILE%
-cd /d "D:\Programs\1. Apps\7. Digital Impact\4. BI\Vistas_RMH"
+cd /d "D:\Proyectos\4_BI_Ecom\Vistas_RMH"
 python DI_Solidez_Ventas_Medios.py >> %LOGFILE% 2>&1
 
 IF %ERRORLEVEL% NEQ 0 (
