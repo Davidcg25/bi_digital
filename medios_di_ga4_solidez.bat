@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 setlocal ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION
 chcp 65001 >NUL
 
