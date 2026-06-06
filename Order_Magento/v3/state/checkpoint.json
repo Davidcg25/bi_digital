@@ -1,0 +1,14 @@
+{
+  "date_field": "created_at",
+  "date_mode": "days",
+  "local_tz": "America/Lima",
+  "days_back": 10,
+  "date_from_local": "",
+  "date_to_local": "",
+  "range_utc_start": "2026-01-24 05:00:00",
+  "range_utc_end": "2026-02-04 04:59:59",
+  "base_url": "https://converse.cl/rest/V1/",
+  "file": "orders_20260203_102444.ndjson.gz",
+  "orders_in_file": 7343,
+  "last_run": "2026-02-03T10:32:54.086976"
+}

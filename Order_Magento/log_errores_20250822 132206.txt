@@ -1,0 +1,3 @@
+[INFO] Orden 25000125884: reglas no mapeadas en Excel [3316]
+[INFO] Orden 25000126292: reglas no mapeadas en Excel [3322]
+[INFO] Orden 25000126460: reglas no mapeadas en Excel [3322]

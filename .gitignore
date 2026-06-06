@@ -1,0 +1,32 @@
+# === Secretos / credenciales (NUNCA versionar) ===
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+credenciales.json
+**/credenciales.json
+**/credenciales.xlsx
+**/di-auth-gsheets.json
+*.key
+*.pem
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# === Salidas / backups / logs ===
+outputs_*/
+**/outputs_*/
+Logs/
+*.log
+*.backup_*
+
+# === Windows ===
+*.lnk
+Thumbs.db
+desktop.ini
