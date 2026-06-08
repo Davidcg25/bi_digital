@@ -30,3 +30,6 @@ Logs/
 *.lnk
 Thumbs.db
 desktop.ini
+
+# Digest generado (HTML local)
+Diagnostico/digest/
