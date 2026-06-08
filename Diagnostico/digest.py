@@ -185,6 +185,91 @@ def area_operacion(eng):
                 texto=f"Ventas 7d S/{u7:,.0f} ({delta})."))
     return items
 
+# ── Área 5: Tareas para agencia de desarrollo ──────────────────────
+# Temas que NO se resuelven en Magento con el equipo interno → ticket dev.
+# Genera briefs ESPECIFICADOS (con evidencia fresca) en briefs_agencia.md.
+def _brief_sizecharts(sc):
+    sc = sc.sort_values("ses", ascending=False)
+    afect = sc[sc["ses"] >= 100000]
+    limpios = sc[sc["ses"] < 100000]
+    filas = "\n".join(f"| {r['property_name']} | {int(r['ses']):,} |" for _, r in afect.iterrows())
+    limp = ", ".join(f"{r['property_name']} ({int(r['ses']):,})" for _, r in limpios.iterrows()) or "—"
+    return f"""## Ticket 1 — Sizecharts inflan el analytics (GA4)
+
+**Problema:** las páginas `/sizechart-*` (guía de tallas) son la **página #1 por sesiones** en varios sites independientes. Un widget de tallas no debería rankear #1 ni generar sesiones propias.
+
+**Evidencia (sesiones 12m en URLs /sizechart-*):**
+
+| Site | Sesiones |
+|------|----------|
+{filas}
+
+**Pista clave:** estos sites SÍ lo tienen, pero **{limp}** casi no → la implementación difiere. Comparar.
+
+**Hipótesis:** en los sites afectados el componente sizechart dispara un `page_view` / virtual pageview al abrirse (debería ser un *event*, no un page_view).
+
+**Qué pedimos revisar:**
+1. ¿El sizechart es una ruta/página que carga (con su page_view) o un modal? Debería ser modal/evento.
+2. GTM/GA4: ¿hay un `page_view` (o `send_page_view`) al abrir el sizechart? Convertirlo en evento (ej. `view_size_chart`).
+3. Comparar la implementación de los sites limpios con la de los afectados.
+
+**Impacto:** infla sesiones ~20-27%, distorsiona top-pages, landing, bounce y conversión por página.
+**Criterio de aceptación:** sizechart registrado como evento (no page_view); las URLs `/sizechart-*` salen de los reportes de páginas; las sesiones del site bajan a su volumen real."""
+
+def _brief_direct(dr):
+    filas = "\n".join(f"| {r['property_name']} | {r['pct_ses_direct']*100:.0f}% | {r['pct_rev_direct']*100:.0f}% |" for _, r in dr.iterrows())
+    return f"""## Ticket 2 — Direct anómalo: se rompe la atribución en el checkout/pago
+
+**Problema:** el canal **Direct** está anormalmente alto, sobre todo en **revenue** (compras atribuidas a Direct en vez de a su canal real).
+
+**Evidencia (% de sesiones / % de revenue en Direct):**
+
+| Web | % sesiones Direct | % revenue Direct |
+|-----|-------------------|------------------|
+{filas}
+
+**Contexto interno:** el checkout NO está en otro dominio/subdominio, así que NO es cross-domain del checkout. Pero **algo se rompe al pasar a la sección de checkout/pago**, y como Direct domina el *revenue*, el síntoma apunta a la **pasarela de pago externa**.
+
+**Hipótesis (orden de probabilidad):**
+1. **Pasarela de pago externa** (Niubiz/Culqi/Mercado Pago/Izipay/etc.): el flujo sale a su dominio y **el retorno se cuenta como sesión nueva "Direct"**, re-atribuyendo la compra. → agregar el/los dominios de la pasarela a **Referral Exclusions** de GA4.
+2. **El tag de GA no se mantiene en el checkout** (no dispara, o resetea sesión / pierde los parámetros de campaña al transicionar).
+3. Redirects en el flujo de pago que pierden el referrer.
+
+**Qué pedimos revisar:**
+1. Confirmar por qué dominios pasa el flujo de pago y **agregarlos a Referral Exclusions** (GA4 Admin → Data Streams → Configure tag → List unwanted referrals).
+2. Verificar que el tag de GA dispara de forma **continua** en todo el checkout (sin reset de sesión, conservando `utm_*` / `gclid`).
+3. Revisar la página de confirmación: ¿carga con la sesión original?
+
+**Criterio de aceptación:** Direct baja a un rango razonable (<~20-25% sesiones para retail) y el revenue se re-atribuye a sus canales reales."""
+
+def area_agencia(eng):
+    items, briefs = [], []
+    sc = _q(eng, """
+        SELECT property_name, SUM(sessions) ses FROM ga4_pages_12m
+        WHERE page_path LIKE '%sizechart%' GROUP BY property_name
+        HAVING SUM(sessions) >= 1
+    """)
+    if not sc.empty and (sc["ses"] >= 100000).any():
+        afect = sc[sc["ses"] >= 100000].sort_values("ses", ascending=False)
+        resumen = ", ".join(f"{r['property_name']} {r['ses']/1e6:.1f}M" for _, r in afect.iterrows())
+        items.append(dict(marca="Sizecharts (GA4)", sev="alta",
+            texto=f"Páginas /sizechart-* son la #1 por sesiones en {len(afect)} sites ({resumen}). → Ticket dev. Detalle en briefs_agencia.md."))
+        briefs.append(_brief_sizecharts(sc))
+    dr = _q(eng, """
+        SELECT property_name, pct_ses_direct, pct_rev_direct FROM vw_ga4_certificacion_resumen
+        WHERE ses_total_paginas >= 50000 AND (pct_ses_direct >= 0.40 OR pct_rev_direct >= 0.35)
+        ORDER BY pct_rev_direct DESC
+    """)
+    if not dr.empty:
+        resumen = ", ".join(f"{r['property_name']} {r['pct_rev_direct']*100:.0f}% rev" for _, r in dr.iterrows())
+        items.append(dict(marca="Atribución Direct", sev="alta",
+            texto=f"Direct rompe atribución en {len(dr)} webs ({resumen}) — probable pasarela de pago. → Ticket dev. Detalle en briefs_agencia.md."))
+        briefs.append(_brief_direct(dr))
+    if briefs:
+        md = "# Tareas para agencia de desarrollo — generado " + dt.datetime.now().strftime("%Y-%m-%d %H:%M") + "\n\n" + "\n\n---\n\n".join(briefs) + "\n"
+        (OUTDIR / "briefs_agencia.md").write_text(md, encoding="utf-8")
+    return items
+
 # ── Render HTML ────────────────────────────────────────────────────
 SEV_ORDER = {"alta": 0, "media": 1, "info": 2}
 SEV_COLOR = {"alta": "#c0392b", "media": "#e08e0b", "info": "#0078d4"}
@@ -210,6 +295,7 @@ def render(areas: dict[str, list]):
         "confianza": "② Confianza de datos",
         "ux": "③ UX / fricción (Clarity)",
         "operacion": "④ Operación (ventas / stock)",
+        "agencia": "⑤ Tareas para agencia (desarrollo)",
     }
     for key, titulo in titulos.items():
         items = sorted(areas.get(key, []), key=lambda i: SEV_ORDER.get(i["sev"], 9))
@@ -229,7 +315,7 @@ def main():
     eng = get_engine()
     areas = {}
     for key, fn in [("conversion", area_conversion), ("confianza", area_confianza),
-                    ("ux", area_ux), ("operacion", area_operacion)]:
+                    ("ux", area_ux), ("operacion", area_operacion), ("agencia", area_agencia)]:
         try:
             areas[key] = fn(eng)
             print(f"[OK] {key}: {len(areas[key])} señales")

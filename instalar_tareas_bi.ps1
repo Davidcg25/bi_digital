@@ -73,6 +73,14 @@ $Tasks = @(
             @{ Type = "Weekly"; DaysOfWeek = $Weekdays; Time = "10:15" }
         )
         Description = "GA4 Solidez -> SQL Server -> Google Sheets"
+    },
+    @{
+        Name = "diagnostico_digest"
+        Batch = Join-Path $BaseDir "Diagnostico\digest.bat"
+        Triggers = @(
+            @{ Type = "Weekly"; DaysOfWeek = $Weekdays; Time = "18:30" }
+        )
+        Description = "Digest accionable de diagnostico -> HTML local + briefs agencia (post refresh diario)"
     }
 )
 
