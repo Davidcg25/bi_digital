@@ -218,7 +218,7 @@ def _brief_sizecharts(sc):
 
 def _brief_direct(dr):
     filas = "\n".join(f"| {r['property_name']} | {r['pct_ses_direct']*100:.0f}% | {r['pct_rev_direct']*100:.0f}% |" for _, r in dr.iterrows())
-    return f"""## Ticket 2 — Direct anómalo: se rompe la atribución en el checkout/pago
+    return f"""## Ticket 2 — Direct anómalo: diagnosticar la atribución (nuevo vs recurrente)
 
 **Problema:** el canal **Direct** está anormalmente alto, sobre todo en **revenue** (compras atribuidas a Direct en vez de a su canal real).
 
@@ -228,19 +228,27 @@ def _brief_direct(dr):
 |-----|-------------------|------------------|
 {filas}
 
-**Contexto interno:** el checkout NO está en otro dominio/subdominio, así que NO es cross-domain del checkout. Pero **algo se rompe al pasar a la sección de checkout/pago**, y como Direct domina el *revenue*, el síntoma apunta a la **pasarela de pago externa**.
+**Señal:** Direct domina el *revenue* (su % de revenue > % de sesiones) → las sesiones Direct **convierten mejor que el promedio**. Hay que separar dos causas distintas mezcladas ahí.
 
-**Hipótesis (orden de probabilidad):**
-1. **Pasarela de pago externa** (Niubiz/Culqi/Mercado Pago/Izipay/etc.): el flujo sale a su dominio y **el retorno se cuenta como sesión nueva "Direct"**, re-atribuyendo la compra. → agregar el/los dominios de la pasarela a **Referral Exclusions** de GA4.
-2. **El tag de GA no se mantiene en el checkout** (no dispara, o resetea sesión / pierde los parámetros de campaña al transicionar).
-3. Redirects en el flujo de pago que pierden el referrer.
+**Descartado por volumen (con data interna de medios de pago):** las pasarelas que redirigen (Acuotaz/PowerPay/apurata) son ~4% de las órdenes pagadas (PowerPay 49 de ~1,170 últimos 7d). No pueden explicar el grueso del Direct. Excluir sus dominios igual por limpieza, pero NO es la causa.
+
+**Hipótesis reales (diagnosticar, no asumir):**
+1. **Atribución rota de pauta / social:** los navegadores in-app (Instagram/Facebook/TikTok) suelen strippear el referrer y perder `utm_*` → tráfico pagado de alto intento cae a Direct. Si la pauta social es fuerte, explica revenue alto en Direct.
+2. **Cobertura incompleta de UTMs** en pauta/email/afiliados.
+3. **Direct legítimo de marca:** clientes recurrentes de una marca conocida (Converse) entran directo y compran → parte es real, no bug.
+4. Consent-mode/cookies que bloquean GA hasta aceptar.
+
+**El diagnóstico clave (1 corte barato): segmentar Direct por usuario NUEVO vs RECURRENTE.**
+- Mayormente **recurrente** → buena parte es legítimo (fuerza de marca), no urgente.
+- Mayormente **nuevo** → atribución rota (un usuario nuevo no debería ser "directo") → perseguir UTMs / in-app browsers.
+Complementar con device (mobile alto + landing en ficha = huele a social-app) y landing page.
 
 **Qué pedimos revisar:**
-1. Confirmar por qué dominios pasa el flujo de pago y **agregarlos a Referral Exclusions** (GA4 Admin → Data Streams → Configure tag → List unwanted referrals).
-2. Verificar que el tag de GA dispara de forma **continua** en todo el checkout (sin reset de sesión, conservando `utm_*` / `gclid`).
-3. Revisar la página de confirmación: ¿carga con la sesión original?
+1. Segmentar el canal Direct por **nuevo/recurrente, device y landing page** → con eso se sabe el mix real (legítimo vs roto).
+2. Auditar cobertura de **UTMs** en pauta (Meta/Google) y el parsing de in-app browsers.
+3. Menor/limpieza: excluir dominios de Acuotaz/PowerPay de Referral Exclusions.
 
-**Criterio de aceptación:** Direct baja a un rango razonable (<~20-25% sesiones para retail) y el revenue se re-atribuye a sus canales reales."""
+**Criterio de aceptación:** saber qué % de Direct es legítimo (recurrente) vs roto (nuevo sin UTM), y recuperar la atribución del tráfico pagado."""
 
 def area_agencia(eng):
     items, briefs = [], []
@@ -263,7 +271,7 @@ def area_agencia(eng):
     if not dr.empty:
         resumen = ", ".join(f"{r['property_name']} {r['pct_rev_direct']*100:.0f}% rev" for _, r in dr.iterrows())
         items.append(dict(marca="Atribución Direct", sev="alta",
-            texto=f"Direct rompe atribución en {len(dr)} webs ({resumen}) — probable pasarela de pago. → Ticket dev. Detalle en briefs_agencia.md."))
+            texto=f"Direct anómalo en {len(dr)} webs ({resumen}) — segmentar nuevo/recurrente para separar marca-legítimo de atribución rota. → Ticket dev. Detalle en briefs_agencia.md."))
         briefs.append(_brief_direct(dr))
     if briefs:
         md = "# Tareas para agencia de desarrollo — generado " + dt.datetime.now().strftime("%Y-%m-%d %H:%M") + "\n\n" + "\n\n---\n\n".join(briefs) + "\n"
