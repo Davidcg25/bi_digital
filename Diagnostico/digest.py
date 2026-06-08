@@ -58,22 +58,47 @@ def area_conversion(eng):
                     elif d >= 0.15:
                         items.append(dict(marca=marca, sev="info",
                             texto=f"Conversión vista→carrito subió {d*100:.0f}% ({a*100:.1f}%→{b*100:.1f}%). Ver qué se hizo bien y replicar."))
-    # Fugas por producto (alto tráfico, baja conversión a carrito vs mediana del catálogo)
+    # Fugas por producto VALIDADAS contra stock/curva de tallas.
+    # GA4 item_id == MC del stock → cruzamos para saber si la fuga es por
+    # STOCK (curva rota / sin ecom) o por la FICHA (foto/precio/contenido).
     f = _q(eng, """
-        SELECT TOP 6 property_name, item_name, items_viewed, view_to_cart, med_view_to_cart, brecha_vs_mediana
-        FROM vw_ga4_item_funnel
-        WHERE items_viewed >= 200 AND brecha_vs_mediana <= -0.02
-        ORDER BY items_viewed DESC
+        SELECT TOP 12 f.property_name, f.item_name, f.item_id, f.items_viewed,
+               f.view_to_cart, f.med_view_to_cart,
+               s.[Total General] tot, s.Ecommerce eco, s.Marketplace mkt,
+               s.[Nro Tallas] tallas, s.Curvado
+        FROM vw_ga4_item_funnel f
+        LEFT JOIN [Vista_Stock-rmh_MC_Resumen] s
+               ON s.MC = f.item_id
+              AND s.Fecha = (SELECT MAX(Fecha) FROM [Vista_Stock-rmh_MC_Resumen])
+        WHERE f.items_viewed >= 200 AND f.brecha_vs_mediana <= -0.02
+        ORDER BY f.items_viewed DESC
     """)
+    vistos = set()
     for _, x in f.iterrows():
-        items.append(dict(marca=x["property_name"], sev="media",
-            texto=f"Producto «{str(x['item_name'])[:45]}»: {int(x['items_viewed'])} vistas pero {x['view_to_cart']*100:.1f}% a carrito vs {x['med_view_to_cart']*100:.1f}% de la mediana. Revisar precio/foto/talla/stock."))
+        nombre = str(x["item_name"])[:38]
+        if nombre in vistos:
+            continue
+        vistos.add(nombre)
+        base = f"«{nombre}» ({int(x['items_viewed'])} vistas, {x['view_to_cart']*100:.1f}% a carrito vs {x['med_view_to_cart']*100:.1f}% mediana)"
+        tot, eco, curv, tallas = x["tot"], x["eco"], x["Curvado"], x["tallas"]
+        if pd.isna(tot):
+            sev, causa = "media", "sin match de stock (revisar MC) → validar ficha"
+        elif (eco or 0) == 0 or (str(curv).upper() not in ("CURVADO", "")):
+            sev = "alta"
+            causa = f"CAUSA STOCK: {int(tot)}u total, {int(eco or 0)} en ecom, {int(tallas or 0)} tallas ({curv}) → reponer/curva, NO es la ficha"
+        else:
+            sev = "media"
+            causa = f"stock OK ({int(tot)}u, {curv}) → la fuga es la FICHA (foto/precio/contenido)"
+        items.append(dict(marca=x["property_name"], sev=sev, texto=f"{base}. {causa}"))
+        if len(vistos) >= 6:
+            break
     return items
 
 # ── Área 2: Confianza de datos ─────────────────────────────────────
 def area_confianza(eng):
     items = []
-    c = _q(eng, "SELECT property_name, pct_ses_utilitarias, pct_ses_sizechart, pct_ses_direct, pct_rev_direct FROM vw_ga4_certificacion_resumen")
+    # Piso de volumen: ignorar webs sin tráfico relevante (ej. Fila inactiva)
+    c = _q(eng, "SELECT property_name, pct_ses_utilitarias, pct_ses_sizechart, pct_ses_direct, pct_rev_direct FROM vw_ga4_certificacion_resumen WHERE ses_total_paginas >= 50000")
     for _, x in c.iterrows():
         m = x["property_name"]
         if (x["pct_ses_direct"] or 0) >= 0.40:
@@ -89,63 +114,75 @@ def area_confianza(eng):
 
 # ── Área 3: UX / fricción (Clarity) ────────────────────────────────
 def area_ux(eng):
+    # El ux_risk_score pondera % de SESIONES con cada problema (no conteos):
+    # script_err×3 + dead×2 + error×2 + rage×3 + quickback×1 + (scroll<25 → +10).
+    # Por eso un risk alto con 0 rage/dead viene de errores de script / scroll.
+    # Reportamos el DRIVER real, no un conteo que confunde.
     items = []
     u = _q(eng, """
-        SELECT TOP 6 project_name,
+        SELECT TOP 8 project_name,
             CASE WHEN CHARINDEX('?',url)>0 THEN LEFT(url,CHARINDEX('?',url)-1) ELSE url END AS pagina,
-            SUM(sessions) ses, MAX(ux_risk_score) risk, SUM(rage_clicks) rage, SUM(dead_clicks) dead
+            SUM(sessions) ses, MAX(ux_risk_score) risk,
+            MAX(script_error_session_pct) script_err, MAX(rage_click_session_pct) rage,
+            MAX(dead_click_session_pct) dead, MAX(error_click_session_pct) err,
+            MAX(quickback_session_pct) quickback, MIN(avg_scroll_depth) scroll
         FROM vw_clarity_url_device_summary
         WHERE extraction_date_utc = (SELECT MAX(extraction_date_utc) FROM vw_clarity_url_device_summary)
         GROUP BY project_name, CASE WHEN CHARINDEX('?',url)>0 THEN LEFT(url,CHARINDEX('?',url)-1) ELSE url END
-        HAVING SUM(sessions) >= 30
+        HAVING SUM(sessions) >= 40
         ORDER BY MAX(ux_risk_score) DESC
     """)
-    for _, x in u.iterrows():
+    etiquetas = [("script_err", "errores de script"), ("rage", "rage clicks"),
+                 ("dead", "dead clicks"), ("err", "error clicks"), ("quickback", "quickbacks (entran y rebotan)")]
+    for _, x in u.head(6).iterrows():
         pag = str(x["pagina"]).replace("https://", "").replace("http://", "")
-        sev = "alta" if (x["risk"] or 0) >= 30 else "media"
+        drivers = sorted(((x[k] or 0), lbl) for k, lbl in etiquetas)
+        top_pct, top_lbl = drivers[-1]
+        partes = []
+        if top_pct >= 1:
+            partes.append(f"{top_pct:.0f}% de sesiones con {top_lbl}")
+        if (x["scroll"] or 100) < 25:
+            partes.append(f"scroll bajo ({x['scroll']:.0f}%)")
+        driver = "; ".join(partes) if partes else "fricción difusa"
+        sev = "alta" if (x["risk"] or 0) >= 400 else "media"
         items.append(dict(marca=x["project_name"], sev=sev,
-            texto=f"Fricción alta en «{pag[:50]}» (risk {x['risk']:.0f}; {int(x['rage'] or 0)} rage / {int(x['dead'] or 0)} dead clicks en {int(x['ses'])} sesiones). Revisar esa página."))
+            texto=f"«{pag[:48]}» ({int(x['ses'])} sesiones): {driver}. Revisar esa página."))
     return items
 
 # ── Área 4: Operación (ventas / stock) ─────────────────────────────
+MKTS = {"Falabella", "MercadoLibre", "Ripley"}
+
 def area_operacion(eng):
+    # Solo lo que es operación de David (Ecommerce + Marketplace), por Tienda_ecom.
+    # Marketplaces (Falabella/Ripley/MercadoLibre) SIEMPRE visibles aunque estén estables.
     items = []
-    # Ventas: últimos 7 días vs 7 previos por marca
     v = _q(eng, """
-        SELECT Marca_Limpia marca, CAST(Fecha AS date) f, SUM(TotalNeto_Total) neto
+        SELECT Tienda_ecom tienda, CAST(Fecha AS date) f, SUM(TotalNeto_Total) neto, SUM(Ordenes) ord
         FROM Vista_Ventas_Solidez_Resumen
-        WHERE Fecha >= DATEADD(day,-14, CAST(GETDATE() AS date))
-        GROUP BY Marca_Limpia, CAST(Fecha AS date)
+        WHERE Fecha >= DATEADD(day,-14, CAST(GETDATE() AS date)) AND Tienda_ecom IS NOT NULL
+        GROUP BY Tienda_ecom, CAST(Fecha AS date)
     """)
-    if not v.empty:
-        v["f"] = pd.to_datetime(v["f"])
-        hoy = pd.Timestamp(dt.date.today())
-        for marca, g in v.groupby("marca"):
-            u7 = g[g["f"] >= hoy - pd.Timedelta(days=7)]["neto"].sum()
-            p7 = g[(g["f"] < hoy - pd.Timedelta(days=7)) & (g["f"] >= hoy - pd.Timedelta(days=14))]["neto"].sum()
-            if p7 and p7 > 0:
-                d = (u7 - p7) / p7
-                if d <= -0.20:
-                    items.append(dict(marca=marca, sev="alta",
-                        texto=f"Ventas últimos 7d cayeron {d*100:.0f}% vs los 7 previos. Revisar."))
-    # Stock: SKUs con acción sugerida (snapshot más reciente)
-    try:
-        s = _q(eng, """
-            SELECT [Marca.] marca, [Accion Sugerida] accion, COUNT(*) n
-            FROM [Vista_Stock-rmh_SKU_Activacion_Magento]
-            WHERE [Accion Sugerida] IS NOT NULL AND [Accion Sugerida] <> ''
-            GROUP BY [Marca.], [Accion Sugerida]
-            HAVING COUNT(*) >= 20
-            ORDER BY COUNT(*) DESC
-        """)
-        for _, x in s.head(6).iterrows():
-            acc = str(x["accion"]).lower()
-            if "mantener" in acc or "ok" in acc:
-                continue
-            items.append(dict(marca=x["marca"], sev="info",
-                texto=f"{int(x['n'])} SKUs con acción sugerida «{x['accion']}» en Magento. Revisar activación."))
-    except Exception:
-        pass
+    if v.empty:
+        return items
+    v["f"] = pd.to_datetime(v["f"])
+    hoy = pd.Timestamp(dt.date.today())
+    for tienda, g in v.groupby("tienda"):
+        u7 = g[g["f"] >= hoy - pd.Timedelta(days=7)]["neto"].sum()
+        p7 = g[(g["f"] < hoy - pd.Timedelta(days=7)) & (g["f"] >= hoy - pd.Timedelta(days=14))]["neto"].sum()
+        es_mkt = tienda in MKTS
+        d = (u7 - p7) / p7 if p7 and p7 > 0 else None
+        # Piso de volumen para no alarmar con tiendas chicas (salvo marketplaces, que siempre se muestran)
+        if not es_mkt and (p7 or 0) < 3000:
+            continue
+        delta = f"{d*100:+.0f}% vs 7d previos" if d is not None else "sin base previa"
+        tag = "🛒 Marketplace" if es_mkt else "Web"
+        if d is not None and d <= -0.20:
+            items.append(dict(marca=f"{tienda} ({tag})", sev="alta",
+                texto=f"Ventas 7d S/{u7:,.0f} ({delta}) — caída fuerte, revisar."))
+        elif es_mkt:
+            sev = "media" if (d is not None and d <= -0.10) else "info"
+            items.append(dict(marca=f"{tienda} ({tag})", sev=sev,
+                texto=f"Ventas 7d S/{u7:,.0f} ({delta})."))
     return items
 
 # ── Render HTML ────────────────────────────────────────────────────
