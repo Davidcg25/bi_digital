@@ -166,8 +166,12 @@ def execute_report(
     report_name: str,
     dimensions: List[str],
     metrics: List[str],
+    start_date: str | None = None,
+    end_date: str | None = None,
     order_by_dim: str | None = None,
 ) -> pd.DataFrame:
+    start_date = start_date or config.START_DATE
+    end_date = end_date or config.END_DATE
     log("REPORT", f"{property_id} | {report_name}")
     all_rows: List[Dict[str, str]] = []
     offset = 0
@@ -179,7 +183,7 @@ def execute_report(
                     property=f"properties/{property_id}",
                     dimensions=[Dimension(name=d) for d in dimensions],
                     metrics=[Metric(name=m) for m in metrics],
-                    date_ranges=[DateRange(start_date=config.START_DATE, end_date=config.END_DATE)],
+                    date_ranges=[DateRange(start_date=start_date, end_date=end_date)],
                     limit=config.PAGE_SIZE,
                     offset=offset,
                 )
@@ -287,7 +291,9 @@ def save_csv_backup(df: pd.DataFrame, property_name: str, report_name: str) -> N
 
 def main() -> None:
     log("START", "GA4 Multi-Property -> SQL Server")
-    log("WINDOW", f"{config.START_DATE} -> {config.END_DATE}")
+    log("WINDOW", f"range: {config.START_DATE} -> {config.END_DATE} | monthly: {config.MONTHLY_START_DATE} -> {config.END_DATE}")
+    if config.REPORT_NAMES_TO_RUN:
+        log("REPORTS", f"Filtrados por REPORT_NAMES_TO_RUN: {', '.join(r['name'] for r in config.REPORTS)}")
     log("PROPERTIES", ", ".join(config.PROPERTY_IDS_TO_RUN))
 
     engine = get_engine()
@@ -318,12 +324,17 @@ def main() -> None:
 
         for report in config.REPORTS:
             try:
+                # Mensuales con start alineado a día 1: evita meses de borde
+                # parciales que pisen meses completos ya cargados.
+                report_start = config.MONTHLY_START_DATE if report["grain"] == "monthly" else config.START_DATE
                 raw_df = execute_report(
                     client=client,
                     property_id=property_id,
                     report_name=report["name"],
                     dimensions=report["dimensions"],
                     metrics=report["metrics"],
+                    start_date=report_start,
+                    end_date=config.END_DATE,
                     order_by_dim=report.get("order_by_dim"),
                 )
                 df = normalize_dataframe(raw_df, report, property_id, property_name, run_id)

@@ -45,7 +45,15 @@ _default_start = _today - timedelta(days=int(os.getenv("LOOKBACK_DAYS", "365")))
 
 START_DATE = os.getenv("START_DATE", _default_start.strftime("%Y-%m-%d"))
 END_DATE = os.getenv("END_DATE", _today.strftime("%Y-%m-%d"))
-START_YM = START_DATE[:7].replace("-", "")
+
+# Los reportes mensuales usan un start alineado al día 1 del mes de START_DATE.
+# Con ventana rodante (LOOKBACK_DAYS), un start a mitad de mes traía el mes de
+# borde parcial y el upsert pisaba meses completos ya cargados en SQL.
+# El mes en curso (el de END_DATE) sí se carga; se asume parcial hasta cerrar.
+MONTHLY_START_DATE = (
+    datetime.strptime(START_DATE, "%Y-%m-%d").date().replace(day=1).strftime("%Y-%m-%d")
+)
+START_YM = MONTHLY_START_DATE[:7].replace("-", "")
 END_YM = END_DATE[:7].replace("-", "")
 
 # =========================
@@ -206,3 +214,13 @@ REPORTS = [
         "order_by_dim": "yearMonth",
     },
 ]
+
+# Limitar reportes por nombre desde el entorno (ej. backfill solo mensual):
+# REPORT_NAMES_TO_RUN=monthly_core,monthly_rates,monthly_events,monthly_channels,monthly_devices,landing_pages_monthly
+_report_names_env = os.getenv("REPORT_NAMES_TO_RUN", "").strip()
+REPORT_NAMES_TO_RUN = [x.strip() for x in _report_names_env.split(",") if x.strip()]
+if REPORT_NAMES_TO_RUN:
+    _unknown = set(REPORT_NAMES_TO_RUN) - {r["name"] for r in REPORTS}
+    if _unknown:
+        raise ValueError(f"REPORT_NAMES_TO_RUN contiene reportes desconocidos: {sorted(_unknown)}")
+    REPORTS = [r for r in REPORTS if r["name"] in set(REPORT_NAMES_TO_RUN)]
