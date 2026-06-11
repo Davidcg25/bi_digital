@@ -69,6 +69,7 @@ SELECT
     MAX(o.qty_ordered)                           AS qty_ordered,    -- repetida por source
     SUM(o.qty_confirmed)                         AS qty_confirmed,  -- por source: se suma
     COUNT(DISTINCT o.source_id)                  AS n_sources,
+    MAX(CAST(o.pago_confirmado AS tinyint))      AS pago_confirmado,
     MAX(o.original_price)                        AS original_price,
     MAX(o.price)                                 AS price,
     MAX(o.row_total)                             AS row_total,
@@ -99,7 +100,9 @@ WITH lin AS (   -- colapsa primero el split por source para no inflar qty/montos
         MAX(o.qty_ordered)       AS qty_ordered,
         SUM(o.qty_confirmed)     AS qty_confirmed,
         MAX(o.row_total)         AS row_total,
+        MAX(o.grand_total_item)  AS grand_total_item,
         MAX(o.grand_total_purchased) AS grand_total_purchased,
+        MAX(o.total_shipping_charges) AS total_shipping_charges,
         MAX(o.payment_value)     AS payment_value,
         MAX(o.customer_id)       AS customer_id,
         MAX(o.courrier)          AS courrier,
@@ -179,6 +182,10 @@ SELECT
     SUM(l.price_discount)                        AS price_discount,
     MAX(l.invoice_date)                          AS invoice_date,
     MAX(l.grand_total_purchased)                 AS grand_total,
+    -- Venta de ítems (sin shipping, con IGV): la métrica de "ingresos" del
+    -- overview de Novedades; /1.18 la hace comparable con TotalNeto RMH.
+    SUM(l.grand_total_item)                      AS venta_items,
+    MAX(l.total_shipping_charges)                AS envio_cobrado,
     MAX(l.payment_value)                         AS payment_value,
     COUNT(*)                                     AS n_lineas,
     MAX(s.n_sources)                             AS n_sources,
@@ -211,10 +218,16 @@ WITH ga4 AS (
 mag AS (
     SELECT web_key, fecha,
            COUNT(*)                                                        AS pedidos,
+           SUM(CASE WHEN pago_confirmado = 1 THEN 1 ELSE 0 END)            AS pedidos_pagados,
            SUM(CASE WHEN estado_grupo = 'cancelada'      THEN 1 ELSE 0 END) AS pedidos_cancelados,
            SUM(CASE WHEN estado_grupo = 'pendiente_pago' THEN 1 ELSE 0 END) AS pedidos_pendientes,
-           SUM(grand_total)                                                AS venta_ordenada,
-           SUM(CASE WHEN estado_grupo = 'cancelada' THEN grand_total ELSE 0 END) AS venta_cancelada
+           SUM(CASE WHEN pago_confirmado = 1 THEN unidades_confirmadas ELSE 0 END) AS unidades_pagadas,
+           -- Venta pagada de ítems (sin shipping, con IGV) y su neta sin IGV:
+           -- comparable con facturado_rmh (TotalNeto). grand_total_purchased
+           -- NO se usa aquí porque incluye el cobro de envío.
+           SUM(CASE WHEN pago_confirmado = 1 THEN venta_items ELSE 0 END)  AS venta_pagada,
+           SUM(CASE WHEN pago_confirmado = 1 THEN venta_items ELSE 0 END) / 1.18 AS venta_pagada_neta,
+           SUM(CASE WHEN estado_grupo = 'cancelada' THEN venta_items ELSE 0 END) AS venta_cancelada
     FROM dbo.vw_magento_orders_pedido
     GROUP BY web_key, fecha
 ),
@@ -237,13 +250,13 @@ SELECT
     g.sesiones, g.compras_ga4, g.revenue_ga4,
     CAST(1.0 * g.compras_ga4 / NULLIF(g.sesiones, 0) AS decimal(18,6))            AS cr_ga4,
     -- Pedido (Magento)
-    m.pedidos, m.pedidos_cancelados, m.pedidos_pendientes,
-    m.venta_ordenada, m.venta_cancelada,
+    m.pedidos, m.pedidos_pagados, m.pedidos_cancelados, m.pedidos_pendientes,
+    m.unidades_pagadas, m.venta_pagada, m.venta_pagada_neta, m.venta_cancelada,
     CAST(1.0 * m.pedidos_cancelados / NULLIF(m.pedidos, 0) AS decimal(18,6))      AS tasa_cancelacion,
     -- Facturado (RMH, neto)
     r.ordenes_rmh, r.unidades_rmh, r.facturado_rmh, r.contribucion_rmh,
-    CAST(1.0 * r.facturado_rmh / NULLIF(m.venta_ordenada - m.venta_cancelada, 0)
-         AS decimal(18,6))                                                        AS ratio_facturado_vs_ordenado
+    CAST(1.0 * r.facturado_rmh / NULLIF(m.venta_pagada_neta, 0)
+         AS decimal(18,6))                                                        AS ratio_facturado_vs_pagado
 FROM ga4 g
 FULL JOIN mag m ON m.web_key = g.web_key AND m.fecha = g.fecha
 FULL JOIN rmh r ON r.web_key = COALESCE(g.web_key, m.web_key)

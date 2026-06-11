@@ -5,68 +5,217 @@
 <title>Digital Impact — Overview de operación</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
-  :root { --bg:#f6f7fb; --card:#fff; --ink:#1d2433; --mut:#6b7280; --acc:#2563eb; --bad:#dc2626; --ok:#059669; }
+  :root { --bg:#f6f7fb; --card:#fff; --ink:#1d2433; --mut:#6b7280; --acc:#2563eb; --bad:#dc2626; --ok:#059669; --warn:#d97706; }
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.45 'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--ink); }
-  header { background:var(--card); border-bottom:1px solid #e5e7eb; padding:14px 28px; display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; }
+  header { background:var(--card); border-bottom:1px solid #e5e7eb; padding:14px 28px; display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; position:sticky; top:0; z-index:5; }
   header h1 { font-size:18px; margin:0; }
   header .sub { color:var(--mut); font-size:12.5px; }
-  main { max-width:1180px; margin:22px auto; padding:0 20px; display:grid; gap:18px; }
-  .card { background:var(--card); border:1px solid #e5e7eb; border-radius:10px; padding:18px 20px; }
-  .card h2 { font-size:14.5px; margin:0 0 12px; }
+  main { max-width:1240px; margin:22px auto; padding:0 20px; display:grid; gap:18px; }
+  .card { background:var(--card); border:1px solid #e5e7eb; border-radius:10px; padding:18px 20px; overflow-x:auto; }
+  .card h2 { font-size:14.5px; margin:0 0 4px; }
+  .card .hint { color:var(--mut); font-size:12px; margin:0 0 12px; }
   .filters { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .filters a { text-decoration:none; color:var(--acc); padding:4px 11px; border:1px solid #dbeafe; border-radius:999px; font-size:12.5px; }
   .filters a.on { background:var(--acc); color:#fff; border-color:var(--acc); }
   select { padding:5px 8px; border:1px solid #d1d5db; border-radius:7px; font-size:13px; }
   table { width:100%; border-collapse:collapse; font-size:13px; }
-  th, td { padding:7px 9px; text-align:right; border-bottom:1px solid #f1f2f4; white-space:nowrap; }
-  th { color:var(--mut); font-weight:600; font-size:11.5px; text-transform:uppercase; letter-spacing:.4px; }
+  th, td { padding:6px 9px; text-align:right; border-bottom:1px solid #f1f2f4; white-space:nowrap; }
+  th { color:var(--mut); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
   th:first-child, td:first-child { text-align:left; }
-  tr.sel td { background:#eff6ff; }
+  tr.total td { font-weight:700; background:#f8fafc; }
   td.na { color:#c3c8d0; }
-  .bad { color:var(--bad); font-weight:600; }
+  .up { color:var(--ok); } .down { color:var(--bad); } .warn { color:var(--warn); font-weight:600; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
-  @media (max-width:900px){ .grid2 { grid-template-columns:1fr; } }
-  footer { color:var(--mut); font-size:11.5px; padding:6px 28px 26px; max-width:1180px; margin:0 auto; }
-  canvas { max-height:300px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+  @media (max-width:1000px){ .grid2,.grid3 { grid-template-columns:1fr; } }
+  footer { color:var(--mut); font-size:11.5px; padding:6px 28px 26px; max-width:1240px; margin:0 auto; }
+  canvas { max-height:280px; }
+  .prod-img { width:44px; height:44px; object-fit:contain; border-radius:6px; background:#f3f4f6; vertical-align:middle; }
+  .prod-ph { display:inline-flex; width:44px; height:44px; align-items:center; justify-content:center; background:#f3f4f6; border-radius:6px; font-size:20px; }
+  .prod-name { max-width:300px; overflow:hidden; text-overflow:ellipsis; }
+  .badge { display:inline-block; padding:1px 8px; border-radius:999px; font-size:11px; background:#f1f5f9; color:var(--mut); }
+  .banner { background:#fffbeb; border:1px solid #fde68a; color:#92400e; border-radius:8px; padding:8px 14px; font-size:12.5px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Digital Impact — Overview de operación</h1>
+  <h1>Digital Impact — Overview de operación · Perú</h1>
   <span class="sub">{{ rango_label }} · {{ d1 }} → {{ d2 }} · generado {{ generado }}</span>
 </header>
 <main>
 
 <div class="card filters">
   <strong style="font-size:12.5px;">Rango:</strong>
-  <a href="?rango=mtd&web={{ web }}"      class="{{ 'on' if rango=='mtd' }}">MTD</a>
-  <a href="?rango=7d&web={{ web }}"       class="{{ 'on' if rango=='7d' }}">7 días</a>
-  <a href="?rango=mes_prev&web={{ web }}" class="{{ 'on' if rango=='mes_prev' }}">Mes cerrado</a>
+  <a href="?rango=7d&web={{ web }}"         class="{{ 'on' if rango=='7d' }}">7 días</a>
+  <a href="?rango=mes&web={{ web }}"        class="{{ 'on' if rango=='mes' }}">Mes</a>
+  <a href="?rango=mes_pasado&web={{ web }}" class="{{ 'on' if rango=='mes_pasado' }}">Mes pasado</a>
+  <a href="?rango=ano&web={{ web }}"        class="{{ 'on' if rango=='ano' }}">Año</a>
   <span style="flex:1"></span>
-  <strong style="font-size:12.5px;">Web del gráfico:</strong>
+  <strong style="font-size:12.5px;">Web (productos y gráfico):</strong>
   <select onchange="location='?rango={{ rango }}&web='+encodeURIComponent(this.value)">
     {% for w in webs %}<option value="{{ w }}" {{ 'selected' if w==web }}>{{ w }}</option>{% endfor %}
   </select>
 </div>
 
+{% if not con_catalogo %}
+<div class="banner">Catálogo local vacío: las imágenes de producto se activan al desplegar
+<code>/api/export/catalog</code> en el droplet y correr <code>etl_catalogo_productos.py</code>.</div>
+{% endif %}
+
+<!-- ════ 1. KPIs por tienda (venta = pago confirmado) ════ -->
 <div class="card">
-  <h2>Embudo macro por web — demanda (GA4) → pedido (Magento) → facturado (RMH neto)</h2>
+  <h2>Venta por tienda — pedidos pagados</h2>
+  <p class="hint">pago_confirmado=1 · ingresos = ítems sin envío (con IGV) · Δ vs periodo anterior comparable</p>
   <table>
-    <tr>
-      <th>Web</th><th>Sesiones</th><th>CR GA4</th><th>Pedidos</th>
-      <th>% Cancel.</th><th>Venta ordenada</th><th>Facturado RMH</th><th>Fact. / Ord.</th>
+    <tr><th>Tienda</th><th>Órdenes</th><th>Δ órdenes</th><th>Unidades</th><th>Ingresos S/</th><th>Δ ingresos</th><th>Ticket S/</th></tr>
+    {% for k in kpis %}
+    <tr class="{{ 'total' if k.web=='TOTAL PERÚ' }}">
+      <td>{{ k.web }}</td>
+      <td>{{ '{:,.0f}'.format(k.ordenes) }}</td>
+      <td class="{{ 'up' if k.d_ordenes and k.d_ordenes>0 else 'down' if k.d_ordenes and k.d_ordenes<0 }}">
+        {{ '%+.0f%%'|format(k.d_ordenes) if k.d_ordenes is not none else '—' }}</td>
+      <td>{{ '{:,.0f}'.format(k.unidades) }}</td>
+      <td>{{ '{:,.0f}'.format(k.ingresos) }}</td>
+      <td class="{{ 'up' if k.d_ingresos and k.d_ingresos>0 else 'down' if k.d_ingresos and k.d_ingresos<0 }}">
+        {{ '%+.0f%%'|format(k.d_ingresos) if k.d_ingresos is not none else '—' }}</td>
+      <td>{{ '{:,.0f}'.format(k.ticket) if k.ticket else '—' }}</td>
     </tr>
-    {% for f in filas %}
-    <tr class="{{ 'sel' if f.web==web }}">
-      <td><a href="?rango={{ rango }}&web={{ f.web }}" style="color:inherit">{{ f.web }}</a></td>
+    {% endfor %}
+  </table>
+</div>
+
+<!-- ════ 2. Embudo macro ════ -->
+<div class="card">
+  <h2>Embudo macro — demanda (GA4) → pedido pagado (Magento) → facturado (RMH)</h2>
+  <p class="hint">Venta neta = ítems pagados sin envío /1.18 (sin IGV), comparable con TotalNeto RMH. Mayo cerrado cuadra 92–98%.</p>
+  <table>
+    <tr><th>Web</th><th>Sesiones</th><th>CR GA4</th><th>Pedidos</th><th>Pagados</th><th>% Cancel.</th><th>Venta neta S/</th><th>Facturado RMH S/</th><th>Fact./Neta</th></tr>
+    {% for f in embudo %}
+    <tr>
+      <td>{{ f.web }}</td>
       <td>{{ '{:,.0f}'.format(f.sesiones) if f.sesiones else '—' }}</td>
       <td>{{ '%.2f%%'|format(f.cr) if f.cr is not none else '—' }}</td>
       <td>{{ '{:,.0f}'.format(f.pedidos) }}</td>
-      <td class="{{ 'bad' if f.cancel_pct and f.cancel_pct > 25 }}">{{ '%.0f%%'|format(f.cancel_pct) if f.cancel_pct is not none else '—' }}</td>
-      <td>{{ '{:,.0f}'.format(f.ordenado) }}</td>
+      <td>{{ '{:,.0f}'.format(f.pagados) }}</td>
+      <td class="{{ 'warn' if f.cancel_pct and f.cancel_pct > 25 }}">{{ '%.0f%%'|format(f.cancel_pct) if f.cancel_pct is not none else '—' }}</td>
+      <td>{{ '{:,.0f}'.format(f.neta) }}</td>
       <td class="{{ 'na' if not f.facturado }}">{{ '{:,.0f}'.format(f.facturado) if f.facturado else 'sin RMH' }}</td>
-      <td>{{ '%.0f%%'|format(f.facturado / f.ordenado * 100) if f.facturado and f.ordenado else '—' }}</td>
+      <td>{{ '%.0f%%'|format(f.ratio) if f.ratio else '—' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<!-- ════ 3. Tendencia 30d ════ -->
+<div class="card">
+  <h2>Tendencia 30 días — Perú total</h2>
+  <canvas id="chTend"></canvas>
+</div>
+
+<!-- ════ 4. Geografía ════ -->
+<div class="grid2">
+  <div class="card">
+    <h2>Zonas de despacho</h2>
+    <p class="hint">Zona logística (mapeo de sync_orders) · pedidos pagados del rango</p>
+    <table>
+      <tr><th>Zona</th><th>Órdenes</th><th>Share</th><th>Ingresos S/</th><th>Top departamentos</th></tr>
+      {% for z in zonas %}
+      <tr>
+        <td>{{ z.zona }}</td>
+        <td>{{ '{:,.0f}'.format(z.ordenes) }}</td>
+        <td>{{ '%.0f%%'|format(z.share) }}</td>
+        <td>{{ '{:,.0f}'.format(z.ingresos) }}</td>
+        <td style="text-align:left; font-size:12px; color:var(--mut)">{{ z.top_deptos }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  <div class="card">
+    <h2>Top distritos</h2>
+    <p class="hint">Pedidos pagados del rango, todas las webs Perú</p>
+    <table>
+      <tr><th>Distrito</th><th>Departamento</th><th>Órdenes</th><th>Ingresos S/</th></tr>
+      {% for d in distritos %}
+      <tr>
+        <td>{{ d.distrito }}</td>
+        <td style="text-align:left">{{ d.departamento }}</td>
+        <td>{{ '{:,.0f}'.format(d.ordenes) }}</td>
+        <td>{{ '{:,.0f}'.format(d.ingresos) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<!-- ════ 5. Cupones / Pasarelas / Multisource ════ -->
+<div class="grid3">
+  <div class="card">
+    <h2>Cupones</h2>
+    <p class="hint">Participación e impacto en ticket (pagados)</p>
+    <table>
+      <tr><td>Órdenes con cupón</td><td>{{ '{:,.0f}'.format(cupones.ordenes_con) }} ({{ '%.0f%%'|format(cupones.share) if cupones.share is not none else '—' }})</td></tr>
+      <tr><td>Ticket con cupón</td><td>{{ 'S/ {:,.0f}'.format(cupones.ticket_con) if cupones.ticket_con else '—' }}</td></tr>
+      <tr><td>Ticket sin cupón</td><td>{{ 'S/ {:,.0f}'.format(cupones.ticket_sin) if cupones.ticket_sin else '—' }}</td></tr>
+      <tr><td>Impacto en ticket</td>
+          <td class="{{ 'up' if cupones.impacto and cupones.impacto>0 else 'down' }}">{{ '%+.0f%%'|format(cupones.impacto) if cupones.impacto is not none else '—' }}</td></tr>
+    </table>
+    <h2 style="margin-top:14px;">Top cupones</h2>
+    <table>
+      <tr><th>Cupón</th><th>Órdenes</th><th>Ingresos S/</th></tr>
+      {% for c in cupones_top %}
+      <tr><td>{{ c.coupon_code }}</td><td>{{ '{:,.0f}'.format(c.ordenes) }}</td><td>{{ '{:,.0f}'.format(c.ingresos) }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  <div class="card">
+    <h2>Conversión de pasarelas</h2>
+    <p class="hint">Confirmadas / total de órdenes del rango</p>
+    <table>
+      <tr><th>Pasarela</th><th>Órdenes</th><th>Confirm.</th><th>% Conv.</th></tr>
+      {% for p in pasarelas %}
+      <tr>
+        <td>{{ p.label }}</td>
+        <td>{{ '{:,.0f}'.format(p.total) }}</td>
+        <td>{{ '{:,.0f}'.format(p.confirmadas) }}</td>
+        <td class="{{ 'warn' if p.conv is not none and p.conv < 50 }}">{{ '%.0f%%'|format(p.conv) if p.conv is not none else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  <div class="card">
+    <h2>Almacenes por pedido</h2>
+    <p class="hint"># de sources que abastecen vs envío cobrado (el leak: el cobro no escala)</p>
+    <table>
+      <tr><th>Sources</th><th>Órdenes</th><th>Envío prom. S/</th><th>Ingresos S/</th></tr>
+      {% for m in multisource %}
+      <tr>
+        <td>{{ m.bucket }}</td>
+        <td>{{ '{:,.0f}'.format(m.ordenes) }}</td>
+        <td>{{ '%.1f'|format(m.envio_prom) if m.envio_prom is not none else '—' }}</td>
+        <td>{{ '{:,.0f}'.format(m.ingresos) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<!-- ════ 6. Productos: best / tráfico sin venta / stock sin tráfico ════ -->
+<div class="card">
+  <h2>Best sellers — {{ web }}</h2>
+  <p class="hint">Unidades pagadas del rango + tráfico 12m GA4 del producto (item_id = MC)</p>
+  <table>
+    <tr><th></th><th>Producto</th><th>MC</th><th>Unidades</th><th>Órdenes</th><th>Ingresos S/</th><th>Vistas 12m</th><th>V→Carrito</th></tr>
+    {% for b in best %}
+    <tr>
+      <td>{% if b.img %}<img class="prod-img" src="{{ b.img }}" loading="lazy" onerror="this.outerHTML='<span class=prod-ph>&#x1f45f;</span>'">{% else %}<span class="prod-ph">&#x1f45f;</span>{% endif %}</td>
+      <td class="prod-name" style="text-align:left">{{ b.name_web or b.product_name }}</td>
+      <td><span class="badge">{{ b.mc }}</span></td>
+      <td>{{ '{:,.0f}'.format(b.unidades) }}</td>
+      <td>{{ '{:,.0f}'.format(b.ordenes) }}</td>
+      <td>{{ '{:,.0f}'.format(b.ingresos) }}</td>
+      <td>{{ '{:,.0f}'.format(b.items_viewed) if b.items_viewed else '—' }}</td>
+      <td>{{ '%.1f%%'|format(b.view_to_cart*100) if b.view_to_cart is not none else '—' }}</td>
     </tr>
     {% endfor %}
   </table>
@@ -74,38 +223,60 @@
 
 <div class="grid2">
   <div class="card">
-    <h2>{{ web }} — demanda y pedidos por día</h2>
-    <canvas id="chDem"></canvas>
+    <h2>Mucho tráfico, poca venta — {{ web }}</h2>
+    <p class="hint">≥200 vistas 12m con conversión bajo la mediana del catálogo. Si stock ecom bajo o curva rota → tallas; si stock OK → ficha/precio.</p>
+    <table>
+      <tr><th></th><th>Producto</th><th>Vistas</th><th>V→C vs med.</th><th>Uds. rango</th><th>Stock ecom</th><th>Tallas</th></tr>
+      {% for t in trafico_sin_venta %}
+      <tr>
+        <td>{% if t.img %}<img class="prod-img" src="{{ t.img }}" loading="lazy" onerror="this.outerHTML='<span class=prod-ph>&#x1f45f;</span>'">{% else %}<span class="prod-ph">&#x1f45f;</span>{% endif %}</td>
+        <td class="prod-name" style="text-align:left">{{ t.name_web or t.item_name }}</td>
+        <td>{{ '{:,.0f}'.format(t.items_viewed) }}</td>
+        <td class="down">{{ '%.1f%% / %.1f%%'|format(t.view_to_cart*100, t.med_view_to_cart*100) }}</td>
+        <td>{{ '{:,.0f}'.format(t.unidades_rango) }}</td>
+        <td class="{{ 'warn' if t.stock_ecom is not none and t.stock_ecom < 20 }}">{{ '{:,.0f}'.format(t.stock_ecom) if t.stock_ecom is not none else '—' }}</td>
+        <td class="{{ 'warn' if t.Curvado and 'NO' in t.Curvado|upper }}">{{ t.n_tallas if t.n_tallas is not none else '—' }}{{ ' ✗curva' if t.Curvado and 'NO' in t.Curvado|upper }}</td>
+      </tr>
+      {% endfor %}
+    </table>
   </div>
   <div class="card">
-    <h2>{{ web }} — ordenado vs facturado por día</h2>
-    <canvas id="chPlata"></canvas>
+    <h2>Mucho stock, poco tráfico — {{ web }}</h2>
+    <p class="hint">≥30 uds. ecom (último snapshot) con &lt;200 vistas 12m → visibilidad / push / no publicado</p>
+    <table>
+      <tr><th></th><th>MC</th><th>Producto</th><th>Stock ecom</th><th>Tallas</th><th>Vistas 12m</th></tr>
+      {% for s in stock_sin_trafico %}
+      <tr>
+        <td>{% if s.img %}<img class="prod-img" src="{{ s.img }}" loading="lazy" onerror="this.outerHTML='<span class=prod-ph>&#x1f4e6;</span>'">{% else %}<span class="prod-ph">&#x1f4e6;</span>{% endif %}</td>
+        <td><span class="badge">{{ s.MC }}</span></td>
+        <td class="prod-name" style="text-align:left">{{ s.name_web or s.linea_stock or '—' }}</td>
+        <td>{{ '{:,.0f}'.format(s.stock_ecom) }}</td>
+        <td>{{ s.n_tallas if s.n_tallas is not none else '—' }}</td>
+        <td>{{ '{:,.0f}'.format(s.items_viewed) if s.items_viewed else '0' }}</td>
+      </tr>
+      {% endfor %}
+    </table>
   </div>
 </div>
 
 </main>
 <footer>
-  Fuentes: <code>vw_ops_diaria</code> (GA4 <code>ga4_daily_core</code> · Magento <code>vw_magento_orders_pedido</code>,
-  confiable desde feb-2026 · RMH <code>vw_rmh_ecommerce_diario_tienda</code>, neto sin IGV — por eso Facturado &lt; Ordenado).
-  Chile y Marketplaces: sin property GA4 local; Chile sin RMH (montos CLP). Caché 10 min.
+  Fuentes: <code>vw_magento_orders_pedido/linea</code> (confiable desde feb-2026, pago_confirmado=1),
+  <code>vw_ops_diaria</code>, <code>vw_ga4_item_funnel</code> (ventana 12m),
+  <code>Vista_Stock-rmh_MC_Resumen</code> (último snapshot), <code>Catalogo_Productos</code> (imágenes).
+  Solo Perú. Caché 10 min.
 </footer>
 
 <script>
-const C = {{ chart | tojson }};
-new Chart(document.getElementById('chDem'), {
-  data: { labels: C.labels, datasets: [
-    { type:'line', label:'Sesiones', data:C.sesiones, yAxisID:'y', borderColor:'#2563eb', backgroundColor:'#2563eb22', tension:.3, fill:true },
-    { type:'bar',  label:'Pedidos',  data:C.pedidos,  yAxisID:'y2', backgroundColor:'#05966966', borderColor:'#059669' },
+const T = {{ chart_tend | tojson }};
+new Chart(document.getElementById('chTend'), {
+  data: { labels: T.labels, datasets: [
+    { type:'line', label:'Sesiones', data:T.sesiones, yAxisID:'y2', borderColor:'#2563eb', backgroundColor:'#2563eb18', tension:.3, fill:true, pointRadius:0 },
+    { type:'bar',  label:'Pedidos pagados', data:T.pedidos, yAxisID:'y', backgroundColor:'#05966966', borderColor:'#059669' },
+    { type:'line', label:'Unidades', data:T.unidades, yAxisID:'y', borderColor:'#d97706', tension:.3, pointRadius:0 },
   ]},
-  options: { scales: { y:{ position:'left', title:{display:true,text:'Sesiones'} },
-                       y2:{ position:'right', grid:{drawOnChartArea:false}, title:{display:true,text:'Pedidos'} } } }
-});
-new Chart(document.getElementById('chPlata'), {
-  data: { labels: C.labels, datasets: [
-    { type:'bar',  label:'Venta ordenada', data:C.ordenado,  backgroundColor:'#9333ea55', borderColor:'#9333ea' },
-    { type:'line', label:'Facturado RMH',  data:C.facturado, borderColor:'#dc2626', tension:.3 },
-  ]},
-  options: { scales: { y:{ title:{display:true,text:'Monto'} } } }
+  options: { scales: { y:{ position:'left', title:{display:true,text:'Pedidos / Unidades'} },
+                       y2:{ position:'right', grid:{drawOnChartArea:false}, title:{display:true,text:'Sesiones'} } } }
 });
 </script>
 </body>
