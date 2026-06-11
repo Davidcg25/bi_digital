@@ -155,6 +155,13 @@ def delete_existing(engine: Engine, table: str, grain: str, property_id: str, st
               AND year_month BETWEEN :start_ym AND :end_ym;
         """)
         params = {"property_id": property_id, "start_ym": start_ym, "end_ym": end_ym}
+    elif grain == "daily":
+        sql = text(f"""
+            DELETE FROM dbo.{table}
+            WHERE property_id = :property_id
+              AND [date] BETWEEN :start_date AND :end_date;
+        """)
+        params = {"property_id": property_id, "start_date": start_date, "end_date": end_date}
     else:
         sql = text(f"""
             DELETE FROM dbo.{table}

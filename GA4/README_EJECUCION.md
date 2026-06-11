@@ -69,16 +69,29 @@ PROPERTY_IDS_TO_RUN=407838284,427321367
 
 El script correrá todas las properties definidas en `ga4_config.py`.
 
-## 7. Ventana mensual alineada y backfills
+## 7. Granos y ventanas (diario / mensual / 12m)
 
-Los reportes **mensuales** (`monthly_*`, `landing_pages_monthly`) NO usan el `START_DATE`
-crudo: usan `MONTHLY_START_DATE` = día 1 del mes de `START_DATE` (ver `ga4_config.py`).
-Motivo: con ventana rodante (`LOOKBACK_DAYS=62` en el .bat), un start a mitad de mes
-traía el mes de borde parcial y el upsert pisaba meses completos ya cargados
-(pasó con 202505 y 202604 — reparado con backfill el 2026-06-10).
-El mes en curso se carga y se asume **parcial** hasta que cierre.
-Los reportes de rango (`*_12m`) sí siguen con la ventana rodante (su llave es
-`start_date`+`end_date` exactos, no sufren el problema).
+Cada grano usa su propia ventana (ver `ga4_config.py`):
+
+| Grano | Reportes | Ventana | Cuándo corre |
+|-------|----------|---------|--------------|
+| **daily** | `daily_core`, `daily_channels` → `ga4_daily_*` | `DAILY_LOOKBACK_DAYS=35` días hasta hoy | todos los días |
+| **monthly** | `monthly_*`, `landing_pages_monthly` | día 1 del mes de `START_DATE` → **último día del mes anterior** | solo días 1-`MONTHLY_CLOSE_DAY_LIMIT` (7) del mes |
+| **range** | `*_12m` | `START_DATE`→`END_DATE` rodante (`LOOKBACK_DAYS=62` del .bat) | todos los días |
+
+Reglas:
+- **Las tablas `ga4_monthly_*` contienen SOLO meses cerrados.** El mes en curso
+  vive en `ga4_daily_*` (historia continua desde 2025-01-01, upsert por fecha).
+- Los mensuales se alinean a día 1 porque con ventana rodante un start a mitad
+  de mes traía el mes de borde parcial y el upsert pisaba meses completos ya
+  cargados (pasó con 202505 y 202604 — reparado con backfill el 2026-06-10).
+- `RUN_MONTHLY=true/false` (env) fuerza/inhibe los mensuales; con `START_DATE`
+  o `END_DATE` forzados (backfill) los mensuales corren con esa ventana tal cual.
+- Cadena de vistas diarias (espejo de las mensuales, mismo prorrateo RMH):
+  `vw_ga4_diario_canales_agrupados` → `vw_ga4_rmh_diario_canal` (+
+  `vw_rmh_ecommerce_diario_tienda`). DDL versionado en `02_create_ga4_daily.sql`.
+- Pestaña `RMH_GA4_Diario_Canal` en el Sheet: mes en curso día a día vs el
+  mismo mes del año anterior hasta el mismo día (`ga4_ecommerce_to_sheets.py`).
 
 ### Backfill de meses históricos
 

@@ -248,6 +248,10 @@ def normalize_dataframe(df: pd.DataFrame, report: Dict, property_id: str, proper
         if "year_month" not in df.columns:
             raise ValueError(f"Reporte mensual sin year_month: {report['name']}")
         df["year_month"] = df["year_month"].astype(str).str.slice(0, 6)
+    elif report["grain"] == "daily":
+        if "date" not in df.columns:
+            raise ValueError(f"Reporte diario sin date: {report['name']}")
+        df["date"] = pd.to_datetime(df["date"], format="%Y%m%d").dt.strftime("%Y-%m-%d")
     else:
         df["start_date"] = config.START_DATE
         df["end_date"] = config.END_DATE
@@ -279,6 +283,15 @@ def normalize_dataframe(df: pd.DataFrame, report: Dict, property_id: str, proper
     return df
 
 
+def report_window(report: Dict) -> tuple[str, str]:
+    """Ventana efectiva por grano: monthly alineada/cerrada, daily corta, range rodante."""
+    if report["grain"] == "monthly":
+        return config.MONTHLY_START_DATE, config.MONTHLY_END_DATE
+    if report["grain"] == "daily":
+        return config.DAILY_START_DATE, config.END_DATE
+    return config.START_DATE, config.END_DATE
+
+
 def save_csv_backup(df: pd.DataFrame, property_name: str, report_name: str) -> None:
     if not config.SAVE_CSV_BACKUP or df.empty:
         return
@@ -291,9 +304,20 @@ def save_csv_backup(df: pd.DataFrame, property_name: str, report_name: str) -> N
 
 def main() -> None:
     log("START", "GA4 Multi-Property -> SQL Server")
-    log("WINDOW", f"range: {config.START_DATE} -> {config.END_DATE} | monthly: {config.MONTHLY_START_DATE} -> {config.END_DATE}")
+    log("WINDOW", (
+        f"range: {config.START_DATE} -> {config.END_DATE}"
+        f" | daily: {config.DAILY_START_DATE} -> {config.END_DATE}"
+        f" | monthly: {config.MONTHLY_START_DATE} -> {config.MONTHLY_END_DATE}"
+    ))
     if config.REPORT_NAMES_TO_RUN:
         log("REPORTS", f"Filtrados por REPORT_NAMES_TO_RUN: {', '.join(r['name'] for r in config.REPORTS)}")
+
+    reports_to_run = [r for r in config.REPORTS if r["grain"] != "monthly" or config.RUN_MONTHLY]
+    if not config.RUN_MONTHLY:
+        log("MONTHLY", f"Mensuales omitidos: corren solo al cierre (días 1-{config.MONTHLY_CLOSE_DAY_LIMIT} del mes) o con RUN_MONTHLY=true.")
+    if not reports_to_run:
+        log("DONE", "No hay reportes que correr con la configuración actual.")
+        return
     log("PROPERTIES", ", ".join(config.PROPERTY_IDS_TO_RUN))
 
     engine = get_engine()
@@ -301,12 +325,16 @@ def main() -> None:
     upsert_properties(engine)
 
     client = build_client()
-    run_id = start_run(engine, config.START_DATE, config.END_DATE, len(config.PROPERTY_IDS_TO_RUN))
+    # La fila del run registra la ventana global realmente cubierta por los
+    # reportes que corren (los granos usan ventanas distintas).
+    run_start = min(report_window(r)[0] for r in reports_to_run)
+    run_end = max(report_window(r)[1] for r in reports_to_run)
+    run_id = start_run(engine, run_start, run_end, len(config.PROPERTY_IDS_TO_RUN))
 
     metadata = {
         "run_id": run_id,
-        "start_date": config.START_DATE,
-        "end_date": config.END_DATE,
+        "start_date": run_start,
+        "end_date": run_end,
         "generated_at": datetime.now().isoformat(),
         "properties": [],
     }
@@ -322,11 +350,9 @@ def main() -> None:
 
         log("PROPERTY", f"{property_name} | {property_id}")
 
-        for report in config.REPORTS:
+        for report in reports_to_run:
             try:
-                # Mensuales con start alineado a día 1: evita meses de borde
-                # parciales que pisen meses completos ya cargados.
-                report_start = config.MONTHLY_START_DATE if report["grain"] == "monthly" else config.START_DATE
+                report_start, report_end = report_window(report)
                 raw_df = execute_report(
                     client=client,
                     property_id=property_id,
@@ -334,7 +360,7 @@ def main() -> None:
                     dimensions=report["dimensions"],
                     metrics=report["metrics"],
                     start_date=report_start,
-                    end_date=config.END_DATE,
+                    end_date=report_end,
                     order_by_dim=report.get("order_by_dim"),
                 )
                 df = normalize_dataframe(raw_df, report, property_id, property_name, run_id)
@@ -348,10 +374,10 @@ def main() -> None:
                         table=report["table"],
                         grain=report["grain"],
                         property_id=property_id,
-                        start_date=config.START_DATE,
-                        end_date=config.END_DATE,
+                        start_date=report_start,
+                        end_date=report_end,
                         start_ym=config.START_YM,
-                        end_ym=config.END_YM,
+                        end_ym=config.MONTHLY_END_YM,
                     )
                     rows_loaded = load_dataframe(engine, df, report["table"])
 

@@ -49,12 +49,41 @@ END_DATE = os.getenv("END_DATE", _today.strftime("%Y-%m-%d"))
 # Los reportes mensuales usan un start alineado al día 1 del mes de START_DATE.
 # Con ventana rodante (LOOKBACK_DAYS), un start a mitad de mes traía el mes de
 # borde parcial y el upsert pisaba meses completos ya cargados en SQL.
-# El mes en curso (el de END_DATE) sí se carga; se asume parcial hasta cerrar.
 MONTHLY_START_DATE = (
     datetime.strptime(START_DATE, "%Y-%m-%d").date().replace(day=1).strftime("%Y-%m-%d")
 )
+
+# Grano diario: ventana corta independiente de la rodante de 12m. 35 días cubre
+# el mes en curso completo + cola del anterior y sana reprocesos tardíos de GA4.
+# El upsert es por fecha, así que no sufre el problema de bordes del mensual.
+DAILY_LOOKBACK_DAYS = int(os.getenv("DAILY_LOOKBACK_DAYS", "35"))
+DAILY_START_DATE = os.getenv(
+    "DAILY_START_DATE", (_today - timedelta(days=DAILY_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
+)
+
+# Mensuales solo al cierre de mes: en modo programado (sin START_DATE/END_DATE
+# forzados) los reportes monthly corren solo los primeros MONTHLY_CLOSE_DAY_LIMIT
+# días del mes, con end recortado al último día del mes anterior — las tablas
+# monthly quedan solo con meses cerrados; el mes en curso vive en las daily.
+# RUN_MONTHLY=true/false fuerza el comportamiento (backfills, pruebas).
+MONTHLY_CLOSE_DAY_LIMIT = int(os.getenv("MONTHLY_CLOSE_DAY_LIMIT", "7"))
+_manual_window = bool(os.getenv("START_DATE", "").strip() or os.getenv("END_DATE", "").strip())
+_run_monthly_env = os.getenv("RUN_MONTHLY", "").strip().lower()
+if _run_monthly_env in ("1", "true", "yes", "y"):
+    RUN_MONTHLY = True
+elif _run_monthly_env in ("0", "false", "no", "n"):
+    RUN_MONTHLY = False
+else:
+    RUN_MONTHLY = _manual_window or _today.day <= MONTHLY_CLOSE_DAY_LIMIT
+
+if _manual_window:
+    MONTHLY_END_DATE = END_DATE
+else:
+    MONTHLY_END_DATE = (_today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m-%d")
+
 START_YM = MONTHLY_START_DATE[:7].replace("-", "")
 END_YM = END_DATE[:7].replace("-", "")
+MONTHLY_END_YM = MONTHLY_END_DATE[:7].replace("-", "")
 
 # =========================
 # GA4 AUTH
@@ -134,6 +163,26 @@ REPORTS = [
         "metrics": ["sessions", "purchaseRevenue", "ecommercePurchases", "sessionKeyEventRate:purchase"],
         "grain": "monthly",
         "order_by_dim": "yearMonth",
+    },
+    {
+        "name": "daily_core",
+        "table": "ga4_daily_core",
+        "dimensions": ["date"],
+        "metrics": [
+            "sessions", "totalUsers", "activeUsers", "purchaseRevenue",
+            "ecommercePurchases", "averagePurchaseRevenue", "itemsPurchased",
+            "engagementRate", "screenPageViewsPerSession",
+        ],
+        "grain": "daily",
+        "order_by_dim": "date",
+    },
+    {
+        "name": "daily_channels",
+        "table": "ga4_daily_channels",
+        "dimensions": ["date", "sessionDefaultChannelGroup"],
+        "metrics": ["sessions", "purchaseRevenue", "ecommercePurchases", "sessionKeyEventRate:purchase"],
+        "grain": "daily",
+        "order_by_dim": "date",
     },
     {
         "name": "total_core_12m",

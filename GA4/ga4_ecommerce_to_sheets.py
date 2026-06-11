@@ -9,6 +9,7 @@ Usage:
 
 from __future__ import annotations
 
+import calendar
 import math
 import os
 import time
@@ -38,6 +39,7 @@ CHANNEL_EQUIVALENCES_TABLE = os.getenv("GA4_CHANNEL_EQUIVALENCES_TABLE", "dbo.Eq
 MONTHLY_CHANNELS_TABLE = os.getenv("GA4_MONTHLY_CHANNELS_TABLE", "dbo.ga4_monthly_channels")
 RMH_GA4_CHANNEL_VIEW = os.getenv("GA4_RMH_CHANNEL_VIEW", "dbo.vw_ga4_rmh_mensual_canal")
 RMH_GA4_OWNER_VIEW = os.getenv("GA4_RMH_OWNER_VIEW", "dbo.vw_ga4_rmh_mensual_responsable")
+RMH_GA4_DAILY_CHANNEL_VIEW = os.getenv("GA4_RMH_DAILY_CHANNEL_VIEW", "dbo.vw_ga4_rmh_diario_canal")
 WRITE_CHUNK_ROWS = int(os.getenv("GA4_SHEETS_WRITE_CHUNK_ROWS", "5000"))
 SHEETS_RETRY_BASE_SECONDS = int(os.getenv("GA4_SHEETS_RETRY_BASE_SECONDS", "20"))
 SHEETS_MAX_RETRIES = int(os.getenv("GA4_SHEETS_MAX_RETRIES", "4"))
@@ -52,6 +54,8 @@ INTEGER_COLUMNS = {
     "transactions",
     "sessions_total_mes",
     "transactions_total_mes",
+    "sessions_total_dia",
+    "transactions_total_dia",
     "ordenes_rmh_ecommerce_total",
 }
 AMOUNT_COLUMNS = {
@@ -61,6 +65,7 @@ AMOUNT_COLUMNS = {
     "total_ingresos_mes",
     "ga4_revenue",
     "ga4_revenue_total_mes",
+    "ga4_revenue_total_dia",
     "ingresos_rmh_ecommerce_total",
     "ingresos_rmh_prorrateados",
     "unidades_rmh_ecommerce_total",
@@ -270,7 +275,9 @@ def build_summary_by_property(detail: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_summary_by_channel(detail: pd.DataFrame) -> pd.DataFrame:
-    end_month = REPORT_END_DATE[:7]
+    # Último mes cerrado disponible: las tablas monthly ya no traen el mes en
+    # curso (vive en el grano diario), así que el mes de hoy no existe aquí.
+    end_month = detail["mes"].max() if not detail.empty else REPORT_END_DATE[:7]
     out = detail.copy()
     out = out.loc[out["mes"].eq(end_month)]
 
@@ -328,6 +335,40 @@ def load_sql_sheet_view(view_name: str) -> pd.DataFrame:
     return df
 
 
+def load_daily_mtd_vs_ly() -> pd.DataFrame:
+    """Detalle diario por canal del mes en curso (día 1 -> hoy) vs el mismo mes
+    del año anterior hasta el mismo día. Fuente: vw_ga4_rmh_diario_canal.
+    Ordenado por día y año descendente para comparar día a día ambos años."""
+    today = datetime.strptime(REPORT_END_DATE, "%Y-%m-%d").date()
+    cur_start = today.replace(day=1)
+    ly_year = today.year - 1
+    ly_last_day = calendar.monthrange(ly_year, today.month)[1]
+    ly_start = date(ly_year, today.month, 1)
+    ly_end = date(ly_year, today.month, min(today.day, ly_last_day))
+
+    query = text(f"""
+        SELECT v.*,
+               CASE WHEN v.fecha >= :cur_start THEN 'mes_actual' ELSE 'mes_anio_anterior' END AS periodo
+        FROM {RMH_GA4_DAILY_CHANNEL_VIEW} v
+        WHERE (v.fecha BETWEEN :cur_start AND :cur_end)
+           OR (v.fecha BETWEEN :ly_start AND :ly_end);
+    """)
+    engine = get_engine()
+    df = pd.read_sql(query, engine, params={
+        "cur_start": cur_start.isoformat(),
+        "cur_end": today.isoformat(),
+        "ly_start": ly_start.isoformat(),
+        "ly_end": ly_end.isoformat(),
+    })
+    log("SQL", f"{RMH_GA4_DAILY_CHANNEL_VIEW}: {len(df)} filas ({cur_start}..{today} vs {ly_start}..{ly_end})")
+    if df.empty:
+        return df
+    return df.sort_values(
+        ["dia", "anio", "Tienda_ecom", "canal"],
+        ascending=[True, False, True, True],
+    ).reset_index(drop=True)
+
+
 def build_metadata() -> pd.DataFrame:
     return pd.DataFrame(
         [
@@ -340,6 +381,7 @@ def build_metadata() -> pd.DataFrame:
             ("channel_equivalences_table", CHANNEL_EQUIVALENCES_TABLE),
             ("rmh_ga4_channel_view", RMH_GA4_CHANNEL_VIEW),
             ("rmh_ga4_owner_view", RMH_GA4_OWNER_VIEW),
+            ("rmh_ga4_daily_channel_view", RMH_GA4_DAILY_CHANNEL_VIEW),
         ],
         columns=["campo", "valor"],
     )
@@ -535,6 +577,7 @@ def main() -> None:
         "Resumen_Canal": build_summary_by_channel(detail),
         "RMH_GA4_Mensual_Canal": load_sql_sheet_view(RMH_GA4_CHANNEL_VIEW),
         "RMH_GA4_Mensual_Responsable": load_sql_sheet_view(RMH_GA4_OWNER_VIEW),
+        "RMH_GA4_Diario_Canal": load_daily_mtd_vs_ly(),
         "Canales_Sin_Mapeo": build_unmapped_channels(detail),
         "Equivalencias_Canales": equivalences,
         "Metadata": build_metadata(),
