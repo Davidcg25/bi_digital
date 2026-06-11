@@ -75,6 +75,14 @@ $Tasks = @(
         Description = "GA4 Solidez -> SQL Server -> Google Sheets"
     },
     @{
+        Name = "magento_orders_solidez"
+        Batch = Join-Path $BaseDir "sincronizacion_magento_orders.bat"
+        Triggers = @(
+            @{ Type = "Weekly"; DaysOfWeek = $Weekdays; Time = "08:45" }
+        )
+        Description = "Ordenes Magento (API export droplet) -> SQL Server Magento_Orders"
+    },
+    @{
         Name = "diagnostico_digest"
         Batch = Join-Path $BaseDir "Diagnostico\digest.bat"
         Triggers = @(
