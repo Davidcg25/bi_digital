@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Digital Impact — Overview de operación</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#f6f7fb; --card:#fff; --ink:#1d2433; --mut:#6b7280; --acc:#2563eb; --bad:#dc2626; --ok:#059669; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--card); border-bottom:1px solid #e5e7eb; padding:14px 28px; display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  header .sub { color:var(--mut); font-size:12.5px; }
+  main { max-width:1180px; margin:22px auto; padding:0 20px; display:grid; gap:18px; }
+  .card { background:var(--card); border:1px solid #e5e7eb; border-radius:10px; padding:18px 20px; }
+  .card h2 { font-size:14.5px; margin:0 0 12px; }
+  .filters { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .filters a { text-decoration:none; color:var(--acc); padding:4px 11px; border:1px solid #dbeafe; border-radius:999px; font-size:12.5px; }
+  .filters a.on { background:var(--acc); color:#fff; border-color:var(--acc); }
+  select { padding:5px 8px; border:1px solid #d1d5db; border-radius:7px; font-size:13px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { padding:7px 9px; text-align:right; border-bottom:1px solid #f1f2f4; white-space:nowrap; }
+  th { color:var(--mut); font-weight:600; font-size:11.5px; text-transform:uppercase; letter-spacing:.4px; }
+  th:first-child, td:first-child { text-align:left; }
+  tr.sel td { background:#eff6ff; }
+  td.na { color:#c3c8d0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  @media (max-width:900px){ .grid2 { grid-template-columns:1fr; } }
+  footer { color:var(--mut); font-size:11.5px; padding:6px 28px 26px; max-width:1180px; margin:0 auto; }
+  canvas { max-height:300px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Digital Impact — Overview de operación</h1>
+  <span class="sub">{{ rango_label }} · {{ d1 }} → {{ d2 }} · generado {{ generado }}</span>
+</header>
+<main>
+
+<div class="card filters">
+  <strong style="font-size:12.5px;">Rango:</strong>
+  <a href="?rango=mtd&web={{ web }}"      class="{{ 'on' if rango=='mtd' }}">MTD</a>
+  <a href="?rango=7d&web={{ web }}"       class="{{ 'on' if rango=='7d' }}">7 días</a>
+  <a href="?rango=mes_prev&web={{ web }}" class="{{ 'on' if rango=='mes_prev' }}">Mes cerrado</a>
+  <span style="flex:1"></span>
+  <strong style="font-size:12.5px;">Web del gráfico:</strong>
+  <select onchange="location='?rango={{ rango }}&web='+encodeURIComponent(this.value)">
+    {% for w in webs %}<option value="{{ w }}" {{ 'selected' if w==web }}>{{ w }}</option>{% endfor %}
+  </select>
+</div>
+
+<div class="card">
+  <h2>Embudo macro por web — demanda (GA4) → pedido (Magento) → facturado (RMH neto)</h2>
+  <table>
+    <tr>
+      <th>Web</th><th>Sesiones</th><th>CR GA4</th><th>Pedidos</th>
+      <th>% Cancel.</th><th>Venta ordenada</th><th>Facturado RMH</th><th>Fact. / Ord.</th>
+    </tr>
+    {% for f in filas %}
+    <tr class="{{ 'sel' if f.web==web }}">
+      <td><a href="?rango={{ rango }}&web={{ f.web }}" style="color:inherit">{{ f.web }}</a></td>
+      <td>{{ '{:,.0f}'.format(f.sesiones) if f.sesiones else '—' }}</td>
+      <td>{{ '%.2f%%'|format(f.cr) if f.cr is not none else '—' }}</td>
+      <td>{{ '{:,.0f}'.format(f.pedidos) }}</td>
+      <td class="{{ 'bad' if f.cancel_pct and f.cancel_pct > 25 }}">{{ '%.0f%%'|format(f.cancel_pct) if f.cancel_pct is not none else '—' }}</td>
+      <td>{{ '{:,.0f}'.format(f.ordenado) }}</td>
+      <td class="{{ 'na' if not f.facturado }}">{{ '{:,.0f}'.format(f.facturado) if f.facturado else 'sin RMH' }}</td>
+      <td>{{ '%.0f%%'|format(f.facturado / f.ordenado * 100) if f.facturado and f.ordenado else '—' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>{{ web }} — demanda y pedidos por día</h2>
+    <canvas id="chDem"></canvas>
+  </div>
+  <div class="card">
+    <h2>{{ web }} — ordenado vs facturado por día</h2>
+    <canvas id="chPlata"></canvas>
+  </div>
+</div>
+
+</main>
+<footer>
+  Fuentes: <code>vw_ops_diaria</code> (GA4 <code>ga4_daily_core</code> · Magento <code>vw_magento_orders_pedido</code>,
+  confiable desde feb-2026 · RMH <code>vw_rmh_ecommerce_diario_tienda</code>, neto sin IGV — por eso Facturado &lt; Ordenado).
+  Chile y Marketplaces: sin property GA4 local; Chile sin RMH (montos CLP). Caché 10 min.
+</footer>
+
+<script>
+const C = {{ chart | tojson }};
+new Chart(document.getElementById('chDem'), {
+  data: { labels: C.labels, datasets: [
+    { type:'line', label:'Sesiones', data:C.sesiones, yAxisID:'y', borderColor:'#2563eb', backgroundColor:'#2563eb22', tension:.3, fill:true },
+    { type:'bar',  label:'Pedidos',  data:C.pedidos,  yAxisID:'y2', backgroundColor:'#05966966', borderColor:'#059669' },
+  ]},
+  options: { scales: { y:{ position:'left', title:{display:true,text:'Sesiones'} },
+                       y2:{ position:'right', grid:{drawOnChartArea:false}, title:{display:true,text:'Pedidos'} } } }
+});
+new Chart(document.getElementById('chPlata'), {
+  data: { labels: C.labels, datasets: [
+    { type:'bar',  label:'Venta ordenada', data:C.ordenado,  backgroundColor:'#9333ea55', borderColor:'#9333ea' },
+    { type:'line', label:'Facturado RMH',  data:C.facturado, borderColor:'#dc2626', tension:.3 },
+  ]},
+  options: { scales: { y:{ title:{display:true,text:'Monto'} } } }
+});
+</script>
+</body>
+</html>
