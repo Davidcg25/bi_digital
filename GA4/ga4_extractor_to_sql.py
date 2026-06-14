@@ -73,6 +73,7 @@ def to_snake(name: str) -> str:
         "pageTitle": "page_title",
         "screenPageViews": "screen_page_views",
         "landingPage": "landing_page",
+        "searchTerm": "search_term",
     }
     if name in explicit:
         return explicit[name]
@@ -123,6 +124,9 @@ def aggregate_for_sql(df: pd.DataFrame, report_name: str) -> pd.DataFrame:
         "pages_12m": ["property_id", "start_date", "end_date", "page_path_hash"],
         "landing_pages_12m": ["property_id", "start_date", "end_date", "landing_page_hash"],
         "landing_pages_monthly": ["property_id", "year_month", "landing_page_hash"],
+        "search_terms_monthly": ["property_id", "year_month", "search_term_hash"],
+        "items_monthly": ["property_id", "year_month", "item_id"],
+        "monthly_campaigns": ["property_id", "year_month", "session_campaign_name"],
     }
 
     group_keys = group_keys_by_report.get(report_name)
@@ -259,12 +263,19 @@ def normalize_dataframe(df: pd.DataFrame, report: Dict, property_id: str, proper
     # Evita nulos en campos de PK textual. GA4 a veces devuelve (not set), vacío o None.
     text_pk_cols = [
         "event_name", "session_default_channel_group", "device_category", "item_id", "item_category",
-        "page_path", "landing_page",
+        "page_path", "landing_page", "search_term",
     ]
     for col in text_pk_cols:
         if col in df.columns:
             df[col] = df[col].fillna("(not set)").astype(str)
             df.loc[df[col].str.strip() == "", col] = "(not set)"
+
+    # Search terms: el bucket vacío (eventos sin búsqueda) domina el volumen y no
+    # es una búsqueda real → se descarta. Solo nos interesan términos efectivos.
+    if "search_term" in df.columns:
+        df = df[df["search_term"] != "(not set)"].reset_index(drop=True)
+        if df.empty:
+            return df
 
     # item_id puede venir vacío; usa item_name como fallback parcial para no romper PK.
     if "item_id" in df.columns:
@@ -276,6 +287,8 @@ def normalize_dataframe(df: pd.DataFrame, report: Dict, property_id: str, proper
         df["page_path_hash"] = df["page_path"].map(stable_sha256)
     if "landing_page" in df.columns:
         df["landing_page_hash"] = df["landing_page"].map(stable_sha256)
+    if "search_term" in df.columns:
+        df["search_term_hash"] = df["search_term"].map(stable_sha256)
 
     df = aggregate_for_sql(df, report["name"])
 

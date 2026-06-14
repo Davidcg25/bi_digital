@@ -262,6 +262,41 @@ REPORTS = [
         "grain": "monthly",
         "order_by_dim": "yearMonth",
     },
+    # Búsqueda interna del sitio (searchTerm). Solo grano MENSUAL: la ventana 12m
+    # es demasiado amplia para ser accionable (David). Desde el mensual se derivan
+    # 1m / 3m y el mismo periodo del año pasado como contexto. El extractor
+    # descarta el bucket vacío (eventos sin búsqueda) y guarda el término crudo +
+    # hash; la normalización trim/lower vive en vw_ga4_search_terms_monthly_norm.
+    # Alimenta la Q3 del GPM.
+    {
+        "name": "search_terms_monthly",
+        "table": "ga4_search_terms_monthly",
+        "dimensions": ["yearMonth", "searchTerm"],
+        "metrics": ["eventCount", "sessions", "totalUsers"],
+        "grain": "monthly",
+        "order_by_dim": "yearMonth",
+    },
+    # Campañas (sessionCampaignName) mensual. Sin la métrica de rate: el CR se
+    # deriva en consumo (ecommerce_purchases/sessions) para no sumar tasas al
+    # consolidar. Alimenta la sección Campañas del scorecard Marketing.
+    {
+        "name": "monthly_campaigns",
+        "table": "ga4_monthly_campaigns",
+        "dimensions": ["yearMonth", "sessionCampaignName"],
+        "metrics": ["sessions", "purchaseRevenue", "ecommercePurchases"],
+        "grain": "monthly",
+        "order_by_dim": "yearMonth",
+    },
+    # Items (producto) mensual. itemId = CodColor → reemplaza la tabla congelada
+    # GA4_Url_CodColor_Mensual para las sesiones/vistas por producto del scorecard.
+    {
+        "name": "items_monthly",
+        "table": "ga4_monthly_items",
+        "dimensions": ["yearMonth", "itemId", "itemName"],
+        "metrics": ["itemRevenue", "itemsPurchased", "itemsViewed", "itemsAddedToCart"],
+        "grain": "monthly",
+        "order_by_dim": "yearMonth",
+    },
 ]
 
 # Limitar reportes por nombre desde el entorno (ej. backfill solo mensual):

@@ -33,3 +33,6 @@ desktop.ini
 
 # Digest generado (HTML local)
 Diagnostico/digest/
+
+# Scorecards generados por marca/periodo (HTML/XLSX/PDF regenerables)
+Diagnostico/*/[0-9][0-9][0-9][0-9][0-9][0-9]/
