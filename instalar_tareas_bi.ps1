@@ -89,6 +89,22 @@ $Tasks = @(
             @{ Type = "Weekly"; DaysOfWeek = $Weekdays; Time = "18:30" }
         )
         Description = "Digest accionable de diagnostico -> HTML local + briefs agencia (post refresh diario)"
+    },
+    @{
+        Name = "gsc_solidez"
+        Batch = Join-Path $BaseDir "gsc_solidez.bat"
+        Triggers = @(
+            @{ Type = "Weekly"; DaysOfWeek = @("Monday"); Time = "09:00" }
+        )
+        Description = "Search Console organico (mensual, mes cerrado) -> SQL Server gsc_monthly_*"
+    },
+    @{
+        Name = "gsc_semanal_solidez"
+        Batch = Join-Path $BaseDir "gsc_semanal_solidez.bat"
+        Triggers = @(
+            @{ Type = "Weekly"; DaysOfWeek = @("Tuesday"); Time = "09:30" }
+        )
+        Description = "Search Console organico (semanal, rolling 12 sem) -> SQL Server gsc_weekly_*"
     }
 )
 
