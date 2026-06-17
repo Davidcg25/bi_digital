@@ -31,8 +31,8 @@ def get_engine():
     )
 
 # Cada item: dict(area, marca, sev, texto). sev ∈ {"alta","media","info"}.
-def _q(eng, sql):
-    return pd.read_sql(text(sql), eng.connect())
+def _q(eng, sql, **params):
+    return pd.read_sql(text(sql), eng.connect(), params=params or None)
 
 # ── Área 1: Conversión y fugas ─────────────────────────────────────
 def area_conversion(eng):
@@ -278,6 +278,182 @@ def area_agencia(eng):
         (OUTDIR / "briefs_agencia.md").write_text(md, encoding="utf-8")
     return items
 
+# ── Área 6: Decisiones de negocio ──────────────────────────────────
+# Convierte data operativa en recomendaciones go/no-go (no solo métricas).
+# Primer módulo: MÉTODOS DE PAGO. La conversión (pagado/iniciado) por método
+# en Perú; para los de FINANCIAMIENTO (BNPL) evalúa si la baja conversión
+# justifica apagarlos cruzando 3 cosas: aporte (share de venta confirmada),
+# incrementalidad (ticket) y canibalización (¿el cliente que NO concretó
+# recompra con otro método?). La conversión baja del BNPL es rechazo de
+# crédito, no fricción de checkout → no se apaga por conversión sola.
+PAY_SHORT = {
+    "mercadopago_adbpayment_cc": "MP tarjeta",
+    "mercadopago_adbpayment_yape": "MP Yape",
+    "mercadopago_adbpayment_checkout_pro": "MP Checkout Pro",
+    "mercadopago_adbpayment_checkout_credits": "MP cuotas",
+    "mercadopago_standard": "Mercado Pago",
+    "powerpay": "PowerPay", "apurata_financing": "apurata",
+    "banktransfer": "Transferencia", "openpay_stores": "OpenPay agentes",
+    "checkmo": "Contra entrega/efectivo",
+}
+# Pistas para detectar financiamiento/BNPL aunque cambie el nombre (ej. aCuotaz).
+FINANCING_HINTS = ("powerpay", "apurata", "acuotaz", "financ", "cuota", "apur", "bnpl")
+FIN_CUT_CONV = 0.15     # conversión por debajo de la cual preocupa
+FIN_CUT_SHARE = 0.015   # < 1.5% de la venta confirmada = aporte marginal
+FIN_CUT_CONF = 300      # < 300 órdenes confirmadas 90d = volumen bajo
+FIN_MIN_PEDIDOS = 100   # piso para evaluar un método
+
+def _es_financiamiento(metodo: str) -> bool:
+    m = (metodo or "").lower()
+    return any(h in m for h in FINANCING_HINTS)
+
+def _decision_pagos(eng):
+    items = []
+    # Perú (Chile fuera, distinto checkout/pasarelas). Ventana 90d para tener
+    # base estadística en los métodos de cola larga.
+    df = _q(eng, """
+        SELECT payment_method,
+               COUNT(*) AS pedidos,
+               SUM(CASE WHEN pago_confirmado=1 THEN 1 ELSE 0 END) AS conf,
+               COALESCE(SUM(CASE WHEN pago_confirmado=1 THEN venta_items ELSE 0 END),0)/1.18 AS venta_neta,
+               SUM(CASE WHEN pago_confirmado=0 THEN 1 ELSE 0 END) AS fail_total,
+               SUM(CASE WHEN pago_confirmado=0 AND customer_id>0 THEN 1 ELSE 0 END) AS fail_track
+        FROM dbo.vw_magento_orders_pedido
+        WHERE fecha >= DATEADD(day,-90, CAST(GETDATE() AS date))
+          AND web_key NOT LIKE '%Chile%'
+          AND payment_method IS NOT NULL AND payment_method <> ''
+        GROUP BY payment_method
+    """)
+    if df.empty:
+        return items
+    tot_conf = df["conf"].sum() or 1
+    tot_venta = df["venta_neta"].sum() or 1
+    # Contexto: conversión de los métodos de mayor volumen (frame para los flags).
+    top = df.sort_values("conf", ascending=False).head(5)
+    ctx = ", ".join(f"{PAY_SHORT.get(r['payment_method'], r['payment_method'])} "
+                    f"{r['conf']/r['pedidos']*100:.0f}%"
+                    for _, r in top.iterrows() if r["pedidos"])
+    if ctx:
+        items.append(dict(marca="Conversión de pago (Perú 90d)", sev="info",
+            texto=f"Pagado/iniciado por método: {ctx}. Financiamiento (BNPL) evaluado abajo."))
+    for _, r in df.iterrows():
+        metodo = r["payment_method"]
+        if not _es_financiamiento(metodo):
+            continue
+        pedidos, conf = int(r["pedidos"]), int(r["conf"])
+        if pedidos < FIN_MIN_PEDIDOS:
+            continue
+        conv = conf / pedidos if pedidos else 0
+        venta = float(r["venta_neta"])
+        ticket = venta / conf if conf else 0
+        share = venta / tot_venta
+        fail_total, fail_track = int(r["fail_total"]), int(r["fail_track"])
+        guest_pct = 1 - (fail_track / fail_total) if fail_total else 0
+        # Canibalización: de clientes rastreables con fallo en ESTE método,
+        # ¿cuántos recompran (cualquier método) en la ventana?
+        rec = _q(eng, """
+            WITH fail AS (
+              SELECT DISTINCT customer_id FROM dbo.vw_magento_orders_pedido
+              WHERE fecha >= DATEADD(day,-90, CAST(GETDATE() AS date))
+                AND payment_method = :m AND pago_confirmado=0
+                AND customer_id IS NOT NULL AND customer_id>0)
+            SELECT (SELECT COUNT(*) FROM fail) AS base,
+                   (SELECT COUNT(DISTINCT f.customer_id) FROM fail f
+                      JOIN dbo.vw_magento_orders_pedido o ON o.customer_id=f.customer_id
+                      WHERE o.pago_confirmado=1
+                        AND o.fecha >= DATEADD(day,-90, CAST(GETDATE() AS date))) AS recup
+        """, m=metodo)
+        base = int(rec["base"].iloc[0]) if not rec.empty else 0
+        recup = int(rec["recup"].iloc[0]) if not rec.empty else 0
+        recov_pct = (recup / base) if base else None
+        nombre = PAY_SHORT.get(metodo, metodo)
+        datos = (f"{conv*100:.0f}% conversión ({conf} de {pedidos} pedidos), "
+                 f"S/{venta:,.0f} netos 90d, ticket S/{ticket:,.0f}, "
+                 f"{share*100:.1f}% de la venta confirmada")
+        canib = (f" Canibalización: {guest_pct*100:.0f}% de los fallos son guest "
+                 f"(no rastreables); de los rastreables {recov_pct*100:.0f}% recompra "
+                 f"con otro método." if recov_pct is not None
+                 else f" {guest_pct*100:.0f}% de los fallos son guest (no rastreables).")
+        cortar = conv < FIN_CUT_CONV and share < FIN_CUT_SHARE and conf < FIN_CUT_CONF
+        if cortar:
+            items.append(dict(marca=f"{nombre} (financiamiento)", sev="media",
+                texto=f"{datos}.{canib} → CANDIDATO A RECORTAR/renegociar: "
+                      f"aporte marginal y la peor conversión del checkout."))
+        else:
+            items.append(dict(marca=f"{nombre} (financiamiento)", sev="info",
+                texto=f"{datos}.{canib} → MANTENER: ingreso incremental de ticket alto; "
+                      f"no apagar por conversión baja (es rechazo de crédito, no fricción)."))
+    return items
+
+# ── Módulo: courier / lead time de entrega ─────────────────────────
+# Decisión: ¿qué courier penaliza la entrega y en qué zona conviene redirigir
+# volumen o renegociar? Fuente: dbo.magento_lead_times (réplica del cálculo de
+# Novedades; dias_lead_limpio = días al primer package_delivered). Requiere que
+# el endpoint /api/export/leadtimes esté desplegado y corrido etl_lead_times.py;
+# si la tabla está vacía, el módulo lo dice en vez de fallar.
+LT_MIN_ENTREGAS = 30   # piso de entregas para evaluar un courier (global)
+LT_MIN_ZONA = 20       # piso de entregas courier×zona
+LT_PENAL_DIAS = 1.5    # días por encima del mejor courier de la zona = penaliza
+
+def _decision_courier(eng):
+    items = []
+    chk = _q(eng, "SELECT COUNT(*) AS n FROM dbo.magento_lead_times")
+    if chk.empty or int(chk["n"].iloc[0]) == 0:
+        items.append(dict(marca="Lead time entrega", sev="info",
+            texto="Sin data de lead times. Desplegar /api/export/leadtimes en el droplet "
+                  "(git pull + restart) y correr Magento_Orders/etl_lead_times.py para activar "
+                  "el análisis courier×zona."))
+        return items
+    # Contexto global por courier (ventana 90d de created_at).
+    g = _q(eng, """
+        SELECT courier,
+               COUNT(*) AS pedidos,
+               SUM(CASE WHEN delivery_at IS NOT NULL THEN 1 ELSE 0 END) AS entregados,
+               AVG(CASE WHEN incluida_en_promedio=1 THEN CAST(dias_lead_limpio AS float) END) AS lead_prom
+        FROM dbo.magento_lead_times
+        WHERE created_at >= DATEADD(day,-90, CAST(GETDATE() AS date))
+          AND courier IS NOT NULL AND courier <> ''
+        GROUP BY courier
+    """)
+    g = g[g["entregados"] >= LT_MIN_ENTREGAS]
+    if not g.empty:
+        ctx = ", ".join(f"{r['courier']} {r['lead_prom']:.1f}d ({int(r['entregados'])} entr.)"
+                        for _, r in g.sort_values("lead_prom").iterrows()
+                        if pd.notna(r["lead_prom"]))
+        if ctx:
+            items.append(dict(marca="Lead time por courier (Perú 90d)", sev="info",
+                texto=f"Días promedio a entrega: {ctx}."))
+    # Courier × zona: dónde el peor courier es mucho más lento que el mejor de esa zona.
+    z = _q(eng, """
+        SELECT logistics_zone, courier,
+               COUNT(*) AS entregas, AVG(CAST(dias_lead_limpio AS float)) AS lead_prom
+        FROM dbo.magento_lead_times
+        WHERE incluida_en_promedio=1
+          AND created_at >= DATEADD(day,-90, CAST(GETDATE() AS date))
+          AND logistics_zone IS NOT NULL AND courier IS NOT NULL AND courier <> ''
+        GROUP BY logistics_zone, courier
+        HAVING COUNT(*) >= :min
+    """, min=LT_MIN_ZONA)
+    for zona, grp in z.groupby("logistics_zone"):
+        if len(grp) < 2:
+            continue
+        grp = grp.sort_values("lead_prom")
+        mejor, peor = grp.iloc[0], grp.iloc[-1]
+        delta = peor["lead_prom"] - mejor["lead_prom"]
+        if delta >= LT_PENAL_DIAS:
+            items.append(dict(marca=f"Lead time {zona}", sev="media",
+                texto=f"{peor['courier']} entrega en {peor['lead_prom']:.1f}d vs "
+                      f"{mejor['courier']} {mejor['lead_prom']:.1f}d "
+                      f"({int(peor['entregas'])} vs {int(mejor['entregas'])} entregas) → "
+                      f"redirigir volumen a {mejor['courier']} o renegociar {peor['courier']} en {zona}."))
+    return items
+
+def area_decisiones(eng):
+    items = []
+    items += _decision_pagos(eng)
+    items += _decision_courier(eng)
+    return items
+
 # ── Render HTML ────────────────────────────────────────────────────
 SEV_ORDER = {"alta": 0, "media": 1, "info": 2}
 SEV_COLOR = {"alta": "#c0392b", "media": "#e08e0b", "info": "#0078d4"}
@@ -303,7 +479,8 @@ def render(areas: dict[str, list]):
         "confianza": "② Confianza de datos",
         "ux": "③ UX / fricción (Clarity)",
         "operacion": "④ Operación (ventas / stock)",
-        "agencia": "⑤ Tareas para agencia (desarrollo)",
+        "decisiones": "⑤ Decisiones de negocio",
+        "agencia": "⑥ Tareas para agencia (desarrollo)",
     }
     for key, titulo in titulos.items():
         items = sorted(areas.get(key, []), key=lambda i: SEV_ORDER.get(i["sev"], 9))
@@ -323,7 +500,8 @@ def main():
     eng = get_engine()
     areas = {}
     for key, fn in [("conversion", area_conversion), ("confianza", area_confianza),
-                    ("ux", area_ux), ("operacion", area_operacion), ("agencia", area_agencia)]:
+                    ("ux", area_ux), ("operacion", area_operacion),
+                    ("decisiones", area_decisiones), ("agencia", area_agencia)]:
         try:
             areas[key] = fn(eng)
             print(f"[OK] {key}: {len(areas[key])} señales")
