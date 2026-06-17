@@ -77,8 +77,63 @@ def get_metric(audits: dict[str, Any], metric_name: str) -> float | None:
     return extract_display_number(audits.get(metric_name, {}))
 
 
-def fetch_pagespeed_metrics(api_key: str, url: str, device: str, max_retries: int = 3) -> tuple[list[float | None], str | None]:
-    params = {"url": url, "key": api_key, "strategy": device}
+# Campos extraídos del JSON de PSI: 7 timings de lab + 4 scores de categoría
+# (los 0-100 del reporte Lighthouse) + Core Web Vitals de CAMPO (CrUX, usuarios
+# reales, en loadingExperience). Antes solo se sacaban los 7 timings de performance.
+_METRIC_FIELDS = (
+    "fcp", "lcp", "tbt", "cls", "speed_index", "tti", "max_fid",
+    "score_performance", "score_seo", "score_accessibility", "score_best_practices",
+    "crux_overall", "crux_lcp_ms", "crux_inp_ms", "crux_fcp_ms", "crux_cls",
+)
+
+
+def _empty_metrics() -> dict[str, Any]:
+    return {k: None for k in _METRIC_FIELDS}
+
+
+def _parse_psi(data: dict[str, Any]) -> dict[str, Any]:
+    lh = data["lighthouseResult"]
+    audits = lh.get("audits", {})
+    cats = lh.get("categories", {})
+
+    def score(cat: str) -> int | None:
+        s = cats.get(cat, {}).get("score")
+        return round(s * 100) if isinstance(s, (int, float)) else None
+
+    # CrUX de campo: loadingExperience = la URL; si no tiene muestras, cae a origin.
+    le = data.get("loadingExperience") or {}
+    if not le.get("metrics"):
+        le = data.get("originLoadingExperience") or le
+    lem = le.get("metrics", {}) or {}
+
+    def crux(key: str):
+        return lem.get(key, {}).get("percentile")
+
+    cls_p = crux("CUMULATIVE_LAYOUT_SHIFT_SCORE")
+    return {
+        "fcp": get_metric(audits, "first-contentful-paint"),
+        "lcp": get_metric(audits, "largest-contentful-paint"),
+        "tbt": get_metric(audits, "total-blocking-time"),
+        "cls": get_metric(audits, "cumulative-layout-shift"),
+        "speed_index": get_metric(audits, "speed-index"),
+        "tti": get_metric(audits, "interactive"),
+        "max_fid": get_metric(audits, "max-potential-fid"),
+        "score_performance": score("performance"),
+        "score_seo": score("seo"),
+        "score_accessibility": score("accessibility"),
+        "score_best_practices": score("best-practices"),
+        "crux_overall": le.get("overall_category"),
+        "crux_lcp_ms": crux("LARGEST_CONTENTFUL_PAINT_MS"),
+        "crux_inp_ms": crux("INTERACTION_TO_NEXT_PAINT"),
+        "crux_fcp_ms": crux("FIRST_CONTENTFUL_PAINT_MS"),
+        "crux_cls": (cls_p / 100) if cls_p is not None else None,
+    }
+
+
+def fetch_pagespeed_metrics(api_key: str, url: str, device: str, max_retries: int = 3) -> tuple[dict[str, Any], str | None]:
+    # `category` repetido => PSI devuelve los 4 scores; sin esto solo trae performance.
+    params = [("url", url), ("key", api_key), ("strategy", device)]
+    params += [("category", c) for c in ("performance", "seo", "accessibility", "best-practices")]
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -89,27 +144,18 @@ def fetch_pagespeed_metrics(api_key: str, url: str, device: str, max_retries: in
 
             if "lighthouseResult" not in data:
                 error_msg = data.get("error", {}).get("message", "Respuesta sin lighthouseResult")
-                return [None] * 7, error_msg
+                return _empty_metrics(), error_msg
 
-            audits = data["lighthouseResult"]["audits"]
-            return [
-                get_metric(audits, "first-contentful-paint"),
-                get_metric(audits, "largest-contentful-paint"),
-                get_metric(audits, "total-blocking-time"),
-                get_metric(audits, "cumulative-layout-shift"),
-                get_metric(audits, "speed-index"),
-                get_metric(audits, "interactive"),
-                get_metric(audits, "max-potential-fid"),
-            ], None
+            return _parse_psi(data), None
 
         except (httpx.HTTPError, ValueError) as exc:
             if attempt == max_retries:
-                return [None] * 7, str(exc)
+                return _empty_metrics(), str(exc)
             wait_seconds = attempt * 10
             log("WARN", f"{url} ({device}) intento {attempt}/{max_retries} fallo; reintento en {wait_seconds}s: {exc}")
             time.sleep(wait_seconds)
 
-    return [None] * 7, "Error inesperado"
+    return _empty_metrics(), "Error inesperado"
 
 
 def read_urls() -> pd.DataFrame:
@@ -160,13 +206,7 @@ def build_results(api_key: str, df_urls: pd.DataFrame) -> pd.DataFrame:
                 "tienda": tienda,
                 "sitio_web": url,
                 "device": device,
-                "fcp": metrics[0],
-                "lcp": metrics[1],
-                "tbt": metrics[2],
-                "cls": metrics[3],
-                "speed_index": metrics[4],
-                "tti": metrics[5],
-                "max_fid": metrics[6],
+                **metrics,
             })
 
     df_results = pd.DataFrame(results)
