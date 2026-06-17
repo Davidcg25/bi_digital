@@ -16,7 +16,7 @@ BEGIN
         marca              nvarchar(100)  NULL,
         linea              nvarchar(100)  NULL,
         genero             nvarchar(60)   NULL,
-        descripcion        nvarchar(500)  NULL,
+        descripcion        nvarchar(max)  NULL,   -- descripcion_web (HTML largo, post migracion 002)
         coleccion          nvarchar(100)  NULL,
         temporada          nvarchar(60)   NULL,
         name_web           nvarchar(500)  NULL,

@@ -451,6 +451,19 @@ def sec_top_productos(marca: str, ym: str) -> dict:
             "cobertura": cobertura.get(r["CodColor"]),
         })
 
+    # Imagen del producto: Catalogo_Productos (réplica del catálogo Magento vía
+    # /api/export/catalog), join por mc = CodColor. Un mc tiene una sola imagen.
+    try:
+        img = q("SELECT mc, MAX(base_image) AS img FROM dbo.Catalogo_Productos "
+                "WHERE base_image IS NOT NULL AND base_image <> '' GROUP BY mc")
+        imgmap = dict(zip(img["mc"].astype(str).str.strip(), img["img"]))
+    except Exception:
+        imgmap = {}
+    for r in rows:
+        r["imagen"] = imgmap.get(r["codigo"])
+    if imgmap:
+        cat["base_image"] = cat["CodColor"].map(imgmap)
+
     # % que el top representa del mes (unidades y venta neta) + stock total web.
     tot_und = cat["und"].sum() or 1
     tot_neto = cat["neto"].sum() or 1
@@ -466,7 +479,7 @@ def sec_top_productos(marca: str, ym: str) -> dict:
     has_sesiones = any(r["sesiones"] > 0 for r in rows)
 
     excel = cat.sort_values(["es_top", "und", "sessions"], ascending=[False, False, False])
-    keep = [c for c in ["CodColor", "marca", "descripcion", "linea", "skus", "und",
+    keep = [c for c in ["CodColor", "marca", "descripcion", "base_image", "linea", "skus", "und",
                         "neto", "contrib", "sessions", "tallas", "tallas_stock",
                         "cobertura", "unidades_stock", "es_top"] if c in excel.columns]
     excel = excel[keep]
@@ -1335,7 +1348,7 @@ def render_html(marca, ym, secs, hallazgos, profile="full") -> str:
         titulo = "Top productos del mes" + (" (top 5)" if profile == "clevel" else "")
         p.append(f'<div class=card><h2>{num()} {titulo} '
                  '<span class=est>(grano padre / CodColor · % curvado = cobertura de tallas web)</span></h2>'
-                 '<div class="body"><table><tr><th>CodColor</th>'
+                 '<div class="body"><table><tr><th>Img</th><th>CodColor</th>'
                  + ("<th>Marca</th>" if mc else "")
                  + "<th>Producto</th><th>Tallas</th><th>Unidades</th>"
                    "<th>Venta neta</th><th>Margen</th>"
@@ -1345,7 +1358,10 @@ def render_html(marca, ym, secs, hallazgos, profile="full") -> str:
             cov = f"{r['cobertura']*100:.0f}%" if r["cobertura"] is not None else "—"
             marca_td = f"<td>{r['marca']}</td>" if mc else ""
             ses_td = f"<td>{r['sesiones']:,}</td>" if ses else ""
-            p.append(f"<tr><td>{r['codigo']}</td>{marca_td}<td>{r['descripcion']}</td>"
+            img_td = (f'<td><img src="{r["imagen"]}" alt="" loading="lazy" '
+                      f'style="height:34px;max-width:46px;object-fit:cover;border-radius:4px"></td>'
+                      ) if r.get("imagen") else "<td></td>"
+            p.append(f"<tr>{img_td}<td>{r['codigo']}</td>{marca_td}<td>{r['descripcion']}</td>"
                      f"<td>{r['skus']}</td><td>{r['und']:,}</td><td>S/{r['neto']:,.0f}</td>"
                      f"<td>{(r['margen'] or 0)*100:.0f}%</td>{ses_td}"
                      f"<td>{cov}</td></tr>")
