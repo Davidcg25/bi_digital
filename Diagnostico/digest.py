@@ -393,7 +393,11 @@ def _decision_pagos(eng):
 # si la tabla está vacía, el módulo lo dice en vez de fallar.
 LT_MIN_ENTREGAS = 30   # piso de entregas para evaluar un courier (global)
 LT_MIN_ZONA = 20       # piso de entregas courier×zona
-LT_PENAL_DIAS = 1.5    # días por encima del mejor courier de la zona = penaliza
+# Penaliza si el peor courier de la zona es a la vez ≥1 día Y ≥20% más lento que
+# el mejor. Combinado abs+rel: 1 día pesa distinto en Lima (~2.7d base) que en
+# Selva (~5.4d), el % normaliza por el lead time propio de la zona.
+LT_PENAL_DIAS = 1.0
+LT_PENAL_REL = 0.20
 
 def _decision_courier(eng):
     items = []
@@ -440,11 +444,12 @@ def _decision_courier(eng):
         grp = grp.sort_values("lead_prom")
         mejor, peor = grp.iloc[0], grp.iloc[-1]
         delta = peor["lead_prom"] - mejor["lead_prom"]
-        if delta >= LT_PENAL_DIAS:
+        rel = (peor["lead_prom"] / mejor["lead_prom"] - 1) if mejor["lead_prom"] else 0
+        if delta >= LT_PENAL_DIAS and rel >= LT_PENAL_REL:
             items.append(dict(marca=f"Lead time {zona}", sev="media",
                 texto=f"{peor['courier']} entrega en {peor['lead_prom']:.1f}d vs "
-                      f"{mejor['courier']} {mejor['lead_prom']:.1f}d "
-                      f"({int(peor['entregas'])} vs {int(mejor['entregas'])} entregas) → "
+                      f"{mejor['courier']} {mejor['lead_prom']:.1f}d ({rel*100:.0f}% más lento; "
+                      f"{int(peor['entregas'])} vs {int(mejor['entregas'])} entregas) → "
                       f"redirigir volumen a {mejor['courier']} o renegociar {peor['courier']} en {zona}."))
     return items
 
