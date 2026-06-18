@@ -83,6 +83,14 @@ $Tasks = @(
         Description = "Ordenes Magento (API export droplet) -> SQL Server Magento_Orders"
     },
     @{
+        Name = "magento_lead_times_solidez"
+        Batch = Join-Path $BaseDir "sincronizacion_lead_times.bat"
+        Triggers = @(
+            @{ Type = "Weekly"; DaysOfWeek = $Weekdays; Time = "09:05" }
+        )
+        Description = "Lead times de entrega (API export droplet, ventana rodante 120d) -> SQL Server magento_lead_times"
+    },
+    @{
         Name = "diagnostico_digest"
         Batch = Join-Path $BaseDir "Diagnostico\digest.bat"
         Triggers = @(
