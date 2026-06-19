@@ -149,6 +149,18 @@ REPORTS = [
         "order_by_dim": "yearMonth",
     },
     {
+        # Eventos cortados por device: permite reconstruir el embudo de checkout
+        # (view_item -> add_to_cart -> begin_checkout -> add_shipping_info ->
+        # add_payment_info -> purchase) por mobile/desktop, donde muere el CR.
+        # La vista vw_ga4_checkout_funnel_device pivotea y calcula tasas de paso.
+        "name": "monthly_events_device",
+        "table": "ga4_monthly_events_device",
+        "dimensions": ["yearMonth", "deviceCategory", "eventName"],
+        "metrics": ["eventCount", "totalUsers"],
+        "grain": "monthly",
+        "order_by_dim": "yearMonth",
+    },
+    {
         "name": "monthly_channels",
         "table": "ga4_monthly_channels",
         "dimensions": ["yearMonth", "sessionDefaultChannelGroup"],

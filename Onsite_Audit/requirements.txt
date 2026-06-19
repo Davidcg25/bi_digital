@@ -1,0 +1,4 @@
+# Scraper on-site (auditor de checkout). Ademas del pip install, hace falta el
+# binario del navegador:  python -m playwright install chromium
+playwright==1.60.0
+# DB: reusa sqlalchemy + pyodbc del entorno BI (ya instalados por el resto del repo).

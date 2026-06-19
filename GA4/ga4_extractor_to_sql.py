@@ -127,6 +127,7 @@ def aggregate_for_sql(df: pd.DataFrame, report_name: str) -> pd.DataFrame:
         "search_terms_monthly": ["property_id", "year_month", "search_term_hash"],
         "items_monthly": ["property_id", "year_month", "item_id"],
         "monthly_campaigns": ["property_id", "year_month", "session_campaign_name"],
+        "monthly_events_device": ["property_id", "year_month", "device_category", "event_name"],
     }
 
     group_keys = group_keys_by_report.get(report_name)
