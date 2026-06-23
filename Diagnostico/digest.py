@@ -118,19 +118,27 @@ def area_ux(eng):
     # script_err×3 + dead×2 + error×2 + rage×3 + quickback×1 + (scroll<25 → +10).
     # Por eso un risk alto con 0 rage/dead viene de errores de script / scroll.
     # Reportamos el DRIVER real, no un conteo que confunde.
+    #
+    # La vista ya normaliza la URL (sin querystring) y agrega bien dentro de cada
+    # device. Aqui colapsamos los devices de una pagina ponderando %/scroll por
+    # sesiones — NUNCA MIN/MAX, que reportaban el peor fragmento de 1 sesion
+    # (de ahi salian falsos "100% rage" y "scroll 5%").
     items = []
     u = _q(eng, """
-        SELECT TOP 8 project_name,
-            CASE WHEN CHARINDEX('?',url)>0 THEN LEFT(url,CHARINDEX('?',url)-1) ELSE url END AS pagina,
-            SUM(sessions) ses, MAX(ux_risk_score) risk,
-            MAX(script_error_session_pct) script_err, MAX(rage_click_session_pct) rage,
-            MAX(dead_click_session_pct) dead, MAX(error_click_session_pct) err,
-            MAX(quickback_session_pct) quickback, MIN(avg_scroll_depth) scroll
+        SELECT TOP 8 project_name, url AS pagina,
+            SUM(sessions) ses,
+            SUM(ux_risk_score*sessions)/NULLIF(SUM(sessions),0) risk,
+            SUM(script_error_session_pct*sessions)/NULLIF(SUM(sessions),0) script_err,
+            SUM(rage_click_session_pct*sessions)/NULLIF(SUM(sessions),0) rage,
+            SUM(dead_click_session_pct*sessions)/NULLIF(SUM(sessions),0) dead,
+            SUM(error_click_session_pct*sessions)/NULLIF(SUM(sessions),0) err,
+            SUM(quickback_session_pct*sessions)/NULLIF(SUM(sessions),0) quickback,
+            SUM(avg_scroll_depth*sessions)/NULLIF(SUM(sessions),0) scroll
         FROM vw_clarity_url_device_summary
         WHERE extraction_date_utc = (SELECT MAX(extraction_date_utc) FROM vw_clarity_url_device_summary)
-        GROUP BY project_name, CASE WHEN CHARINDEX('?',url)>0 THEN LEFT(url,CHARINDEX('?',url)-1) ELSE url END
+        GROUP BY project_name, url
         HAVING SUM(sessions) >= 40
-        ORDER BY MAX(ux_risk_score) DESC
+        ORDER BY risk DESC
     """)
     etiquetas = [("script_err", "errores de script"), ("rage", "rage clicks"),
                  ("dead", "dead clicks"), ("err", "error clicks"), ("quickback", "quickbacks (entran y rebotan)")]
