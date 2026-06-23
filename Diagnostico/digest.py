@@ -461,10 +461,122 @@ def _decision_courier(eng):
                       f"redirigir volumen a {mejor['courier']} o renegociar {peor['courier']} en {zona}."))
     return items
 
+# ── Módulo: productos empujar vs frenar (stock × demanda × venta) ──
+# Palanca = el INVENTARIO (distinto de las fugas de Área 1, que son tráfico alto +
+# baja conversión = ficha/stock roto). Por web, sobre el último mes cerrado:
+#   · EMPUJAR  = stock sano + VENDE pero con poco tráfico → darle visibilidad/pauta
+#                (demanda probada no capturada).
+#   · LIQUIDAR = stock alto y CERO venta el mes pasado → capital atado, liquidar /
+#                sacar de destacados.
+# Grano PADRE = CodColor (item_id GA4 = CodColor stock = configurable Magento).
+PROD_WEBS = ["Coliseum", "New Balance", "Caterpillar", "Converse",
+             "Merrell", "Steve Madden", "Umbro"]
+PROD_STOCK_MIN = 30        # piso de unidades en stock web para considerar el modelo
+PROD_TRAFICO_BAJO = 200    # vistas/mes por debajo de las cuales el tráfico es "bajo"
+PROD_LIQUIDAR_STOCK = 50   # stock alto para marcar liquidación
+PROD_CAP = 3               # máx items por tipo en el digest (los más severos)
+
+# Excluye servicios/no-productos (flete, bolsa, gift card) que ensucian el stock.
+_PROD_EXCL = ("AND s.Codcolor NOT LIKE '%bolsa%' AND s.Descripcion NOT LIKE '%bolsa%' "
+              "AND s.Descripcion NOT LIKE '%delivery%' AND s.Descripcion NOT LIKE '%flete%' "
+              "AND s.Descripcion NOT LIKE '%envio%' AND s.Descripcion NOT LIKE '%despacho%' "
+              "AND s.Descripcion NOT LIKE '%gift%'")
+
+def _desc(r):
+    return str(r["descripcion"] or r["CodColor"])[:40]
+
+def _decision_productos(eng):
+    items = []
+    ymrow = _q(eng, "SELECT MAX(year_month) AS ym FROM ga4_monthly_items")
+    if ymrow.empty or not ymrow["ym"].iloc[0]:
+        return items
+    ym = str(ymrow["ym"].iloc[0])              # YYYYMM (último mes cerrado)
+    ym_dash = f"{ym[:4]}-{ym[4:]}"             # YYYY-MM
+
+    # LIQUIDAR — nivel SKU (dedup), stock = snapshot all-marcas, ventas = SUMA de
+    # TODAS las webs ecom (un SKU puede venderse en Coliseum aunque no en su web de
+    # marca → no marcarlo liquidable por mirar una sola tienda).
+    liq = _q(eng, f"""
+        WITH snap AS (SELECT MAX(TRY_CONVERT(date,Fecha,105)) AS d FROM Stock_Solidez_RMH),
+        stock AS (
+          SELECT s.Codcolor AS CodColor, MAX(s.Descripcion) AS descripcion, MAX(s.Marca_Limpia) AS marca,
+                 SUM(CASE WHEN s.stock>0 AND s.Integrada LIKE 'S%' THEN s.stock ELSE 0 END) AS und_stock
+          FROM Stock_Solidez_RMH s CROSS JOIN snap
+          WHERE TRY_CONVERT(date,s.Fecha,105)=snap.d
+            AND s.Codcolor IS NOT NULL AND s.Codcolor<>'' {_PROD_EXCL}
+          GROUP BY s.Codcolor),
+        ven AS (SELECT CodColor, SUM(Cantidad) AS vendidas FROM rpt.v_ventas_base
+                WHERE es_ecom=1 AND AnioMes=:ymdash AND CodColor IS NOT NULL GROUP BY CodColor)
+        SELECT TOP (:cap5) st.CodColor, st.descripcion, st.marca, st.und_stock
+        FROM stock st LEFT JOIN ven ve ON ve.CodColor=st.CodColor
+        WHERE st.und_stock >= :liqmin AND COALESCE(ve.vendidas,0)=0
+        ORDER BY st.und_stock DESC
+    """, ymdash=ym_dash, liqmin=PROD_LIQUIDAR_STOCK, cap5=PROD_CAP * 5)
+
+    # EMPUJAR — por web (la acción de visibilidad es por tienda): vende en la web W
+    # pero con poco tráfico en W. Dedup por CodColor (la mejor instancia).
+    empujar = []
+    for web in PROD_WEBS:
+        df = _q(eng, f"""
+            WITH snap AS (SELECT MAX(TRY_CONVERT(date,Fecha,105)) AS d FROM Stock_Solidez_RMH),
+            stock AS (
+              SELECT s.Codcolor AS CodColor, MAX(s.Descripcion) AS descripcion,
+                     SUM(CASE WHEN s.stock>0 AND s.Integrada LIKE 'S%' THEN s.stock ELSE 0 END) AS und_stock
+              FROM Stock_Solidez_RMH s CROSS JOIN snap
+              WHERE TRY_CONVERT(date,s.Fecha,105)=snap.d
+                AND s.Codcolor IS NOT NULL AND s.Codcolor<>'' {_PROD_EXCL}
+                AND (:allm=1 OR UPPER(s.Marca_Limpia)=UPPER(:web))
+              GROUP BY s.Codcolor),
+            ses AS (SELECT item_id AS CodColor, SUM(items_viewed) AS sesiones
+                    FROM ga4_monthly_items WHERE property_name=:web AND year_month=:ym GROUP BY item_id),
+            ven AS (SELECT CodColor, SUM(Cantidad) AS vendidas FROM rpt.v_ventas_base
+                    WHERE es_ecom=1 AND Tienda_final=:web AND AnioMes=:ymdash AND CodColor IS NOT NULL GROUP BY CodColor)
+            SELECT st.CodColor, st.descripcion, st.und_stock,
+                   COALESCE(se.sesiones,0) AS sesiones, COALESCE(ve.vendidas,0) AS vendidas
+            FROM stock st
+            LEFT JOIN ses se ON se.CodColor=st.CodColor
+            LEFT JOIN ven ve ON ve.CodColor=st.CodColor
+            WHERE st.und_stock >= :smin AND COALESCE(ve.vendidas,0) > 0
+              AND COALESCE(se.sesiones,0) < :traf
+        """, web=web, ym=ym, ymdash=ym_dash, allm=(1 if web == "Coliseum" else 0),
+             smin=PROD_STOCK_MIN, traf=PROD_TRAFICO_BAJO)
+        for _, r in df.iterrows():
+            empujar.append((web, r))
+
+    # Empujar: dedup por descripción (mismo modelo en varios colores = 1 línea) y
+    # top por demanda desperdiciada.
+    empujar.sort(key=lambda x: x[1]["vendidas"], reverse=True)
+    vistos = set()
+    for web, r in empujar:
+        clave = _desc(r).strip().upper()
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        items.append(dict(marca=f"Empujar · {web}", sev="info",
+            texto=f"«{_desc(r)}»: vende {int(r['vendidas'])}u/mes con solo {int(r['sesiones'])} vistas "
+                  f"y {int(r['und_stock'])}u en stock → darle visibilidad/pauta (demanda no capturada)."))
+        if len(vistos) >= PROD_CAP:
+            break
+
+    # Liquidar: dedup por descripción (varios colores del mismo modelo parado).
+    vistos_liq = set()
+    for _, r in liq.iterrows():
+        clave = _desc(r).strip().upper()
+        if clave in vistos_liq:
+            continue
+        vistos_liq.add(clave)
+        items.append(dict(marca=f"Liquidar · {str(r['marca'] or '').title()}", sev="media",
+            texto=f"«{_desc(r)}»: {int(r['und_stock'])}u en stock y 0 ventas ecom el mes pasado "
+                  f"→ liquidar / sacar de destacados (capital atado)."))
+        if len(vistos_liq) >= PROD_CAP:
+            break
+    return items
+
 def area_decisiones(eng):
     items = []
     items += _decision_pagos(eng)
     items += _decision_courier(eng)
+    items += _decision_productos(eng)
     return items
 
 # ── Render HTML ────────────────────────────────────────────────────
