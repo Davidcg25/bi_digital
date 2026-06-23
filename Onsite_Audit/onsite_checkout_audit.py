@@ -6,8 +6,8 @@ begin_checkout -> add_shipping_info (el formulario de direccion), pero ni GA4 ni
 la API de Clarity ven DENTRO del checkout SPA de Magento. Este scraper entra,
 camina home -> PDP -> add to cart -> checkout y mide la rubrica del formulario.
 
-v1: solo New Balance, device mobile. Las 7 webs Solidez son Magento (Luma onepage
-checkout) -> el mismo motor replica luego cambiando SITES.
+Device mobile. Las 7 webs Solidez son Magento (Luma onepage checkout) -> el mismo
+motor las recorre todas vía SITES (Fila se omite, web muerta).
 
 Uso:
     python onsite_checkout_audit.py
@@ -31,9 +31,24 @@ OUT_DIR = BASE_DIR / "outputs"
 OUT_DIR.mkdir(exist_ok=True)
 
 # ── Config ────────────────────────────────────────────────────────────────
+# Las 7 webs Solidez son Magento (Luma onepage checkout) -> mismo motor.
+# 'category' = una listado con rejilla de productos; si 404/vacía, find_pdp_candidates
+# cae a 'home' y a una heurística de enlaces. Fila se omite (web muerta).
 SITES = [
     {"property_name": "New Balance", "dominio": "newbalance.com.pe",
      "home": "https://newbalance.com.pe", "category": "https://newbalance.com.pe/zapatillas"},
+    {"property_name": "Caterpillar", "dominio": "catlifestyle.pe",
+     "home": "https://catlifestyle.pe", "category": "https://catlifestyle.pe/calzado"},
+    {"property_name": "Coliseum", "dominio": "coliseum.com.pe",
+     "home": "https://coliseum.com.pe", "category": "https://coliseum.com.pe/zapatillas"},
+    {"property_name": "Converse", "dominio": "converse.com.pe",
+     "home": "https://converse.com.pe", "category": "https://converse.com.pe/zapatillas"},
+    {"property_name": "Merrell", "dominio": "merrell.com.pe",
+     "home": "https://merrell.com.pe", "category": "https://merrell.com.pe/calzado"},
+    {"property_name": "Steve Madden", "dominio": "stevemadden.com.pe",
+     "home": "https://stevemadden.com.pe", "category": "https://stevemadden.com.pe/calzado"},
+    {"property_name": "Umbro", "dominio": "umbro.com.pe",
+     "home": "https://umbro.com.pe", "category": "https://umbro.com.pe/calzado"},
 ]
 
 SQL_SERVER = "localhost"
@@ -41,6 +56,7 @@ SQL_DATABASE = "Digital_Impact_Reportes"
 SQL_DRIVER = "ODBC Driver 17 for SQL Server"
 
 NAV_TIMEOUT = 45000
+SWEEP_PDP = 4  # nº de PDPs a visitar por web para cosechar errores JS (no solo 1)
 # rutas que NO son PDP (para descartar al buscar producto)
 NON_PDP = ("catalogsearch", "customer", "checkout", "/cart", "wishlist", "cms",
            "contact", "login", "account", "sales", "review", "#", "javascript:",
@@ -323,20 +339,28 @@ def run_site(pw, site, device_name, run_id) -> dict:
 
     try:
         stage[0] = "pdp"
-        for pdp in find_pdp_candidates(page, site):  # el 1ro a veces es ropa sin tallas
+        # barrer varios PDPs para cosechar errores JS intermitentes (no solo el 1ro)
+        cands = find_pdp_candidates(page, site)
+        cart_done = False
+        pdps_visitados = 0
+        for n, pdp in enumerate(cands[:SWEEP_PDP]):
             try:
                 page.goto(pdp, wait_until="domcontentloaded", timeout=NAV_TIMEOUT)
                 page.wait_for_timeout(2500)
             except PWTimeout:
                 continue
             row["reached_pdp"] = 1
-            row["pdp_url"] = pdp
-            snap("pdp")
+            pdps_visitados += 1
+            if not row.get("pdp_url"):
+                row["pdp_url"] = pdp
+            if n == 0:
+                snap("pdp")
             stage[0] = "add_to_cart"
             if try_add_to_cart(page):
                 row["reached_cart"] = 1
-                snap("cart_added")
-                break
+                if not cart_done:
+                    snap("cart_added"); cart_done = True
+        row["pdps_barridos"] = pdps_visitados
 
         stage[0] = "checkout"
         row.update(audit_checkout(page, site))
