@@ -129,7 +129,7 @@ Estructurado en **6 áreas**, cada una una función `area_*(eng)`:
 3. **UX / fricción (Clarity)** — `area_ux` (ver gotcha arriba). `ux_risk_score` = `script_err×3 + dead×2 + error×2 + rage×3 + quickback×1 + (scroll<25 → +10)`.
 4. **Operación (ventas / stock)** — ventas/stock RMH, marketplaces (Falabella/MercadoLibre/Ripley).
 5. **Tareas para agencia de desarrollo** — briefs (size charts, Direct, etc.).
-6. **Decisiones de negocio** — pagos go/no-go (BNPL no se apaga por CR baja = rechazo de crédito), courier / lead time de entrega.
+6. **Decisiones de negocio** — pagos go/no-go (BNPL no se apaga por CR baja = rechazo de crédito), courier / lead time de entrega (umbral abs+rel por zona), productos empujar (stock sano + vende con poco tráfico) vs liquidar (SKU con stock alto y 0 ventas ecom).
 
 ---
 
