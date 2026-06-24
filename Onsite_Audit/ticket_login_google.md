@@ -56,13 +56,8 @@ Permitir que el cliente **cree cuenta e inicie sesión con su cuenta de Google e
 
 ---
 
-## Fuera de alcance
+## Fuera de alcance (de este ticket)
 
-- Autofill de dirección en el checkout (ticket aparte).
-- Otros proveedores (Apple / Facebook) — evaluar después.
-
----
-
-## Complemento sugerido (opcional, menor esfuerzo)
-
-Para los que no quieren cuenta: **seguimiento de pedido como invitado** (por nº de orden + email). Cubre el mismo dolor de "¿dónde está mi pedido?" sin requerir login. Se puede abrir como ticket aparte si interesa.
+- Autofill de dirección en el checkout → ticket aparte.
+- Seguimiento de pedido como invitado (sin cuenta) → ticket aparte.
+- **Login con Apple / Facebook → sí es de interés**, va como extensión en una fase/ticket posterior (este ticket arranca con Google, pero la arquitectura de vinculación por email debería contemplar sumar proveedores después).
